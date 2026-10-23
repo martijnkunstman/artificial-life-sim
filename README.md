@@ -81,6 +81,17 @@ The window shows each exam's raw scores as dots, a smoothed line through the las
 
 Exams run on copies of the creatures with their own position in the random generator, so they never change how the world plays out. A round is spread over the following ticks (30 exam ticks per world tick), so it never stalls a frame. Exams cost about a fifth of the simulation's time, which only shows at Max speed. Over a long run, neighbouring rounds are merged in pairs once there are 360, and exams then run half as often, so the whole history fits. A world saved in the middle of a round skips that round's score.
 
+**What the exams show.** Over 8 worlds of 20 sim-minutes (`node tools/headless.js --seeds 8 --minutes 20`), averaging each exam over the last third of each run:
+
+| Exam | Group | Untrained | Evolved (median world) | Better than untrained in |
+| --- | --- | --- | --- | --- |
+| Foraging | Plant-eaters | 5.3 plants/min | 67 plants/min (12.8×) | 8 of 8 worlds |
+| Foraging | Mixed diet | 2.0 plants/min | 14 plants/min (7.0×) | 8 of 8 worlds |
+| Hunting | Meat-eaters | 0.4 catches/min | 2.0 catches/min (5.3×) | 7 of 8 worlds |
+| Hunting | Mixed diet | 1.1 catches/min | 1.1 catches/min (1.0×) | 3 of 8 worlds |
+
+Foraging improves clearly and in every world. Meat-eaters learn to hunt in most worlds, from a very low start. Mixed-diet creatures get better at foraging but not at hunting. With so few hunters, and so few catches per exam, hunting scores are noisy from round to round.
+
 ## How a creature thinks
 
 Every creature has a feedforward network with 14 inputs, one hidden layer of 12 neurons (tanh) and 4 outputs (sigmoid). The network controls all movement. There are no hardcoded steering rules.

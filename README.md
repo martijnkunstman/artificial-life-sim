@@ -200,7 +200,7 @@ Meat-eaters now sustain themselves more strongly than before parts (births outnu
 node tools/headless.js --seeds 8 --minutes 20
 ```
 
-**Species.** Tracking species changes nothing about how a world plays out, so the numbers above still hold. In the same 8 runs, each world ended with 5 to 12 living species (7.8 on average). Of those, 2.5 had at least 5 members, and the largest averaged 44 members. About 270 species were founded per 20-minute run, most of them newborns or top-ups that died before breeding. The threshold of 1.5 was picked over 1, which split off about twice as many species with no clearer tree, and over 2, which lumped together lineages that had visibly drifted apart.
+**Species.** Tracking species changes nothing about how a world plays out, so the numbers above still hold. In the same 8 runs, each world ended with 5 to 12 living species (7.8 on average). Of those, 2.5 had at least 5 members, and the largest averaged 44 members. About 270 species were founded per 20-minute run, most of them newborns or top-ups that died before breeding. The threshold of 1.5 was picked by comparing 1, 1.5 and 2 on seeds 2 and 3 over 15 sim-minutes. At 1, about twice as many species were founded (286 against 140 on seed 2), mostly one-member offshoots. At 2, only 30 to 70 were founded and the founding plant species never split in 15 minutes, so the tree barely branched.
 
 ## Earlier version
 

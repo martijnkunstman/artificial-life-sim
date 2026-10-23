@@ -55,6 +55,35 @@ class Genome {
     return n;
   }
 
+  // How different two bodies are: diet and size, plus for each part type the difference in how many
+  // each body carries and how far apart the matching parts' settings are. Weights live in SPECIES.
+  static distance(a, b) {
+    const W = SPECIES.weights;
+    let d = W.diet * Math.abs(a.genes.diet - b.genes.diet)
+      + W.size * Math.abs(a.genes.size - b.genes.size) / (GENE_RANGES.size[1] - GENE_RANGES.size[0]);
+    for (const type of PART_TYPES) {
+      const pa = Genome.partsOf(a, type), pb = Genome.partsOf(b, type);
+      d += W.partCount * Math.abs(pa.length - pb.length);
+      const params = Object.entries(PART_SPECS[type].params);
+      for (let i = 0; i < Math.min(pa.length, pb.length); i++) {
+        let diff = 0;
+        for (const [key, [lo, hi]] of params) {
+          diff += key === 'angle'
+            ? Math.abs(wrapAngle(pa[i][key] - pb[i][key])) / Math.PI
+            : Math.abs(pa[i][key] - pb[i][key]) / (hi - lo);
+        }
+        d += W.partShape * diff / params.length;
+      }
+    }
+    return d;
+  }
+
+  // Parts of one type, in a stable order (by their first setting) so like is compared with like.
+  static partsOf(g, type) {
+    const key = Object.keys(PART_SPECS[type].params)[0];
+    return g.parts.filter(p => p.type === type).sort((m, n) => m[key] - n[key]);
+  }
+
   mutate(rate, step = EVOLVE.bodyStep) {
     for (const key in this.genes) {
       if (!chance(rate)) continue;

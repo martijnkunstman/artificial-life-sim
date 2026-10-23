@@ -3,7 +3,7 @@
 
 /*
  * Headless balance runner: runs the real simulation classes in Node, without drawing,
- * over many seeds, and reports how each diet group fares.
+ * over many seeds, and reports how each diet group fares and how many species arise.
  *
  *   node tools/headless.js                      10 seeds x 10 sim-minutes
  *   node tools/headless.js --seeds 20 --minutes 15
@@ -18,7 +18,7 @@ const vm = require('vm');
 // The browser loads these as classic scripts in this order; Renderer, UIController and main stay out.
 const SIM_FILES = [
   'Random.js', 'utils.js', 'config.js', 'Vector.js', 'NeuralNetwork.js', 'Genome.js',
-  'Plant.js', 'Agent.js', 'SpatialGrid.js', 'ParticleSystem.js', 'Simulation.js',
+  'Species.js', 'Plant.js', 'Agent.js', 'SpatialGrid.js', 'ParticleSystem.js', 'Simulation.js',
 ];
 const GROUPS = ['plant', 'mixed', 'meat'];
 const SAMPLE_EVERY = 300; // ticks (5 s of sim time)
@@ -107,7 +107,16 @@ function runSeed(context, opts, seed) {
   for (const b of bodies) for (const k in b) if (k !== 'n' && b.n) b[k] /= b.n;
   const body = { size: sim.agents.reduce((s, a) => s + a.genome.genes.size, 0) / Math.max(1, sim.agents.length) };
 
-  return { seed, groups, maxGen: sim.maxGen, population: sim.agents.length, body, bodies, tps: Math.round(totalTicks / seconds) };
+  // Species: how many are alive at the end, how many were ever founded, and how many living
+  // species hold at least 5 members (the rest are mostly fresh offshoots and top-ups).
+  const species = {
+    alive: sim.species.alive,
+    established: sim.species.list.filter(s => s.count >= 5).length,
+    founded: sim.species.nextId - 1,
+    largest: Math.max(0, ...sim.species.list.map(s => s.count)),
+  };
+
+  return { seed, groups, maxGen: sim.maxGen, population: sim.agents.length, body, bodies, species, tps: Math.round(totalTicks / seconds) };
 }
 
 function pad(v, n) { return String(v).padStart(n); }
@@ -121,7 +130,8 @@ function main() {
     results.push(r);
     if (!opts.json) {
       const cols = r.groups.map(g => `${g.name} ${pad(g.lateMean.toFixed(0), 3)} (${pad(g.lateBirths, 4)}b/${pad(g.lateTopUps, 3)}t)${g.thriving ? '*' : ' '}`);
-      console.log(`seed ${pad(r.seed, 4)}  ${cols.join('  ')}  gen ${pad(r.maxGen, 3)}  size ${r.body.size.toFixed(2)}  ${r.tps} t/s`);
+      const sp = r.species;
+      console.log(`seed ${pad(r.seed, 4)}  ${cols.join('  ')}  gen ${pad(r.maxGen, 3)}  size ${r.body.size.toFixed(2)}  species ${pad(sp.alive, 2)} (${sp.established} with 5+) of ${pad(sp.founded, 4)}  ${r.tps} t/s`);
     }
   }
 
@@ -146,6 +156,8 @@ function main() {
   for (const s of summary) {
     console.log(`  ${s.name.padEnd(6)} thriving in ${pad(Math.round(s.thrivingShare * 100), 3)}% of seeds   median population ${pad(s.medianLateMean.toFixed(0), 3)}   births ${pad(s.lateBirths, 6)}   top-ups ${pad(s.lateTopUps, 4)}`);
   }
+  const avgSp = k => (results.reduce((s, r) => s + r.species[k], 0) / results.length).toFixed(1);
+  console.log(`  species: ${avgSp('alive')} alive at the end (${avgSp('established')} with 5+ members), ${avgSp('founded')} founded per run, largest ${avgSp('largest')} members`);
   // Average final body per group, over the seeds where that group had living members.
   const types = Object.keys(results[0].bodies[0]).filter(k => k !== 'n');
   console.log(`\nAverage body at the end (per creature)\n  group  ${types.map(t => t.padStart(7)).join('')}`);

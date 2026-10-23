@@ -1,6 +1,6 @@
 # Neural Tidepool
 
-An artificial life simulation in plain JavaScript. Creatures share a glowing deep-sea world, each steered by its own small neural network. Their bodies evolve too: size and diet are inherited genes, and bodies are built from parts (eyes, fins, jaws, spikes, armour, fat) that mutate, appear and disappear. Plant-eaters, hunters and everything in between emerge from them.
+An artificial life simulation in plain JavaScript. Creatures share a glowing deep-sea world, each steered by its own small neural network. Their bodies evolve too: size and diet are inherited genes, and bodies are built from parts (eyes, fins, jaws, spikes, armour, fat) that mutate, appear and disappear. Plant-eaters, hunters and everything in between emerge from them, and lineages that drift apart become separate species, shown in a live family tree.
 
 No libraries, no build step: open `index.html` in a browser and it runs.
 
@@ -32,11 +32,39 @@ Every part adds mass and upkeep, and mass slows the body and raises its running 
 
 Even then, the prey's spikes and armour may turn the bite away. A plant-eater can escape predation by growing large or growing defences, at the price of mass and upkeep.
 
-Colour follows diet: green for plants, violet for mixed, red for meat. Shape follows the diet group (teardrop, kite, arrow), drawn size follows the size gene, and every part is drawn on the body: eyes as white dots, fins, jaws at the front, spikes, an armour ring and a fat patch. The selected creature's eye cones are shown on the map. The panel groups creatures by diet (plant-eaters below 0.33, meat-eaters above 0.67), shows a live histogram of the diet gene, and shows each group's average body and parts. The groups are only for display; the rules never look at them.
+Colour follows the species by default (see below), or the diet if you switch it: green for plants, violet for mixed, red for meat. Shape follows the diet group (teardrop, kite, arrow), drawn size follows the size gene, and every part is drawn on the body: eyes as white dots, fins, jaws at the front, spikes, an armour ring and a fat patch. The selected creature's eye cones are shown on the map. The panel also shows a live histogram of the diet gene and the average body and parts per diet group (plant-eaters below 0.33, meat-eaters above 0.67). The diet groups are only for display and top-ups; the rules for eating never look at them.
 
 Plants (yellow) grow mostly around a few fertile zones that drift slowly across the world.
 
 The founders start in three loose diet clusters. A diet group that falls below 3 creatures, or a world below 30, is topped up with mutated copies of the best genomes so far, so a lineage can recover from an early wipe-out.
+
+## Species and the family tree
+
+Species are not assigned. They split off by genetic distance:
+
+- Every species remembers the body it was founded with, its **representative**.
+- A newborn joins its parent's species as long as its body stays within a distance of **1.5** of that representative.
+- The first newborn beyond that distance founds a **new species**, which branches off its parent's species in the family tree. Its brothers and sisters that stayed close remain in the old species, so both can live on side by side.
+- A top-up copied from a species that has died out founds a new branch instead of reviving the old species.
+
+The distance between two bodies adds up:
+
+| Difference | Counts as |
+| --- | --- |
+| Diet | 4 per unit (plants-only vs meat-only = 4) |
+| Size | 2 across the whole size range |
+| Number of parts | 0.5 per part more or fewer of one type (an extra eye, a lost jaw) |
+| Part settings | up to 1 per matching part, by how far its settings (direction, reach, power and so on) have moved across their range |
+
+So a species splits when its diet shifts by about 0.4, or when it has gained or lost three parts and its other settings have drifted a little, or when a mix of smaller changes adds up. The brain is not part of the distance: brains change every generation and two very different networks can steer the same way, so species are defined by body.
+
+Each species gets a generated name and a colour. Root species take their colour from their diet; a branch shifts its parent's hue a little, so related species look alike. Species tracking draws nothing from the seeded random generator, so it never changes how a world plays out.
+
+**In the panel**, the species list shows the largest living species with their average diet and when they were founded, and the chart above it stacks every species' population over the last 150 seconds, with related species next to each other. Click a species to highlight all its members on the map.
+
+**The family tree** (button in the panel, or `T`) draws one line per species against time, from when it was founded to when it died out or to now. A short vertical line joins each species to the one it branched from at the moment it split. Living species are drawn in their colour, thicker the more members they have, and labelled with their name and size; extinct species are grey. Hover a line for details, click it to highlight that species on the map. Extinct species that never reached 3 members are hidden unless something descends from them, since most are single newborns that died before breeding; untick *Extinct branches* to see only living species and their ancestors. Dead ends are dropped from the tree 3 minutes after they die out (sooner once it holds 400 species); ancestors of living species are always kept.
+
+**In the inspector**, the selected creature's species is shown with what it branched from; *Highlight species* marks its relatives on the map.
 
 ## How a creature thinks
 
@@ -76,11 +104,16 @@ Whether a creature flees threats or chases prey depends entirely on what its net
 | Save world | Downloads the whole world (creatures, brains, plants, statistics, settings) as a JSON file |
 | Load world | Opens a saved world and continues it exactly where it left off |
 | Keep progress in this browser | On by default: the world is kept in this browser and resumed on your next visit. Turning it off removes the kept world. |
-| Click a creature | Shows its network firing live, its body and parts in the inspector, and its eye cones on the map |
+| Species list | Click a species to highlight its members on the map; click again to stop |
+| Family tree | Opens the family tree of species |
+| Colour: Species, Diet | Colours creatures by species or by diet |
+| Click a creature | Shows its network firing live, its body, parts and species in the inspector, and its eye cones on the map |
 
-Keyboard: `Space` pauses and resumes, `1` to `5` pick a speed.
+Keyboard: `Space` pauses and resumes, `1` to `5` pick a speed, `T` opens or closes the family tree, `C` switches the colours.
 
 ## Seeds and saved worlds
+
+Saved worlds include the species and the family tree. Worlds saved before species existed still load: their creatures are grouped into species by body when they load, with a fresh family tree.
 
 Every rule in the simulation draws from one seeded random generator (`js/Random.js`). The same seed, window size and settings therefore replay the same world, tick for tick. The seed is shown in the panel and kept in the address, so `index.html?seed=4242` reopens world 4242. Particles are purely visual and use their own randomness, so drawing never changes a run.
 
@@ -90,7 +123,7 @@ A saved world also stores the generator's position, so loading it continues exac
 
 ## Headless balance runner
 
-`tools/headless.js` runs the same simulation classes in Node without drawing, over many seeds, and reports how each diet group fares in the second half of each run:
+`tools/headless.js` runs the same simulation classes in Node without drawing, over many seeds, and reports how each diet group fares in the second half of each run, plus how many species are alive at the end, how many of those have at least 5 members, and how many were founded:
 
 ```bash
 node tools/headless.js --seeds 10 --minutes 10
@@ -104,7 +137,7 @@ Options:
 | `--seed-start S` | 1 | First seed; seeds run S, S+1, … |
 | `--minutes M` | 10 | Sim-minutes per run (60 ticks per second) |
 | `--size WxH` | 1280x800 | World size |
-| `--set key=value` | | Override a setting, such as `plantRate=20` or `EVOLVE.dietGap=0.15`; repeatable |
+| `--set key=value` | | Override a setting, such as `plantRate=20`, `EVOLVE.dietGap=0.15` or `SPECIES.threshold=2`; repeatable |
 | `--json` | | Print full results as JSON |
 
 A group counts as **thriving** in a run when, over the second half, its average population is at least twice its floor and its own births outnumber top-ups at least three to one. A 10-seed, 10-minute run takes a few minutes.
@@ -120,13 +153,15 @@ js/config.js           genes, part types, founder bodies, energy economy, evolut
 js/Vector.js           2D vector
 js/NeuralNetwork.js    feedforward network: forward pass, clone, mutate
 js/Genome.js           body genes and parts: founders, mutation, expression into traits
+js/Species.js          species registry: splitting by genetic distance, names, colours, family-tree order
 js/Plant.js            food pellet
 js/Agent.js            one creature: sensing, thinking, moving, energy
 js/SpatialGrid.js      grid for fast nearest-neighbour and collision lookups
 js/ParticleSystem.js   pooled particles for eating, birth and death bursts
 js/Simulation.js       world state, rules and the fixed-step game loop
 js/Renderer.js         canvas drawing: glowing sprites, trails, selection
-js/UIController.js     panel, dashboard, charts and brain inspector
+js/TreeView.js         family tree panel
+js/UIController.js     panel, dashboard, species list, charts and brain inspector
 js/AutoSave.js         keeps the world in localStorage and resumes it on the next visit
 js/main.js             startup
 tools/headless.js      Node runner for balance testing over many seeds
@@ -137,13 +172,14 @@ The scripts are loaded as ordinary scripts in a fixed order rather than as ES mo
 ## Performance notes
 
 - Nearest-neighbour searches use a spatial grid whose cell size equals the longest possible sight, so each creature checks only the 3×3 cells around it.
-- Glow is baked into sprites once with `shadowBlur` (one sprite per diet step), then drawn rotated and scaled each frame instead of blurring live.
+- Glow is baked into sprites once with `shadowBlur` (one sprite per diet step, and one per shape and 8° hue step for species colours, made the first time a species needs it), then drawn rotated and scaled each frame instead of blurring live.
 - Network activations and particles use preallocated buffers, so the main loop creates very little garbage.
 
 ## Balance
 
 - `BODY` in `js/config.js` holds the energy economy: food values, hunter metabolism, digestion, the diet curve, the hunter's speed and provisioning, and how well spikes and armour defend. Every value can be tried without editing code via `--set BODY.key=value` in the headless runner.
 - `EVOLVE` in `js/config.js` holds the hunting rules, mutation sizes, founders and population floors.
+- `SPECIES` in `js/config.js` holds the species threshold, the distance weights and how long extinct species stay in the tree. `Genome.distance()` in `js/Genome.js` computes the distance.
 - `Genome.express()` in `js/Genome.js` turns genes, parts and these values into a creature's traits; each part's mass and upkeep are set there.
 
 The defaults were chosen with the headless runner, in two rounds.

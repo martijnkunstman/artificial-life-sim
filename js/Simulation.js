@@ -17,6 +17,7 @@ class Simulation {
     this.particles = particles;
     this.eyeBuf = new Float64Array(PART_SPECS.eye.max * 4);
     this.plantColor = plantColor;
+    this.species = new SpeciesRegistry();
     this.renderer = null;
     this.ui = null;
     this.acc = 0;
@@ -42,18 +43,26 @@ class Simulation {
     this.maxGen = 0;
     this.reseeds = 0;
     this.topUps = [0, 0, 0];
-    this.history = [[], [], [], []];
+    this.species.clear();
+    this.speciesHistory = [];
     this.plantAcc = 0;
     this.selected = null;
     this.pinned = false;
+    this.focus = null;
     if (this.particles) this.particles.clear();
     this.zones = Array.from({ length: 3 }, () => ({
       x: rand(0.2, 0.8) * this.W, y: rand(0.2, 0.8) * this.H,
       vx: rand(-0.25, 0.25), vy: rand(-0.25, 0.25),
     }));
     this.resizeGrids();
+    // Each diet group's founders start as one species (founders that happen to land far from the
+    // first one found species of their own).
     EVOLVE.founders.forEach((n, k) => {
-      for (let i = 0; i < n; i++) this.spawnAgent(Genome.founder(k), null, 0);
+      let first = null;
+      for (let i = 0; i < n; i++) {
+        const a = this.spawnAgent(Genome.founder(k), null, 0, first);
+        first = first || a.species;
+      }
     });
     for (let i = 0; i < 240; i++) this.spawnPlant();
     if (this.renderer) this.renderer.clear();
@@ -71,14 +80,15 @@ class Simulation {
       plants: this.plants.map(p => [p.pos.x, p.pos.y, p.born]),
       zones: this.zones, plantAcc: this.plantAcc,
       births: this.births, plantsSpawned: this.plantsSpawned, maxGen: this.maxGen,
-      reseeds: this.reseeds, topUps: this.topUps, history: this.history,
-      fame: this.fame.map(list => list.map(e => ({ fitness: e.fitness, gen: e.gen, genome: e.genome, brain: e.brain }))),
+      reseeds: this.reseeds, topUps: this.topUps,
+      species: this.species, speciesHistory: this.speciesHistory,
+      fame: this.fame.map(list => list.map(e => ({ fitness: e.fitness, gen: e.gen, species: e.species, genome: e.genome, brain: e.brain }))),
     };
   }
 
   load(d) {
     if (!d || d.format !== SAVE_FORMAT) throw new Error('That file is not a saved Neural Tidepool world.');
-    if (d.version !== SAVE_VERSION) throw new Error(`That world was saved by a different version (format ${d.version}, this page reads ${SAVE_VERSION}).`);
+    if (d.version !== SAVE_VERSION && d.version !== 2) throw new Error(`That world was saved by a different version (format ${d.version}, this page reads ${SAVE_VERSION}).`);
     const inputs = d.agents[0] && d.agents[0].brain.sizes[0];
     if (inputs && inputs !== BRAIN_SHAPE[0]) throw new Error(`That world's brains have ${inputs} inputs; this version uses ${BRAIN_SHAPE[0]}.`);
 
@@ -94,20 +104,41 @@ class Simulation {
     this.maxGen = d.maxGen;
     this.reseeds = d.reseeds;
     this.topUps = d.topUps;
-    this.history = d.history;
     this.fame = d.fame.map(list => list.map(e => ({
-      fitness: e.fitness, gen: e.gen, genome: Genome.fromJSON(e.genome), brain: NeuralNetwork.fromJSON(e.brain),
+      fitness: e.fitness, gen: e.gen, species: e.species || 0, genome: Genome.fromJSON(e.genome), brain: NeuralNetwork.fromJSON(e.brain),
     })));
     this.counts = [0, 0, 0];
     for (const a of this.agents) this.counts[a.kind]++;
+    if (d.species) {
+      this.species.load(d.species);
+      this.speciesHistory = d.speciesHistory;
+      for (const s of this.species.list) s.count = 0;
+      for (const a of this.agents) { a.species = this.species.get(a.speciesId); a.species.count++; }
+      this.species.alive = this.species.list.filter(s => s.count > 0).length;
+    } else {
+      this.migrateSpecies();
+    }
     Agent.nextId = this.agents.reduce((m, a) => Math.max(m, a.id), 0) + 1;
     this.selected = null;
     this.pinned = false;
+    this.focus = null;
     if (this.particles) this.particles.clear();
     // Restore the generator last: rebuilding the agents above drew from it.
     rng.state = d.rngState >>> 0;
     this.resize(this.W, this.H);
     if (this.renderer) this.renderer.clear();
+  }
+
+  // Worlds saved before species existed: group the living creatures into species by body,
+  // each joining the first species whose founding body is close enough.
+  migrateSpecies() {
+    this.species.clear();
+    this.speciesHistory = [];
+    for (const a of [...this.agents].sort((m, n) => m.id - n.id)) {
+      a.species = this.species.list.find(s => Genome.distance(a.genome, s.rep) <= SPECIES.threshold)
+        || this.species.found(a.genome, null, this.ticks);
+      this.species.join(a.species);
+    }
   }
 
   resize(w, h) {
@@ -130,10 +161,13 @@ class Simulation {
     this.plantGrid.resize(this.W, this.H, cell);
   }
 
-  spawnAgent(genome, brain, gen, x = rand(20, this.W - 20), y = rand(20, this.H - 20)) {
+  // from is the species of the creature's parent (null for none); see SpeciesRegistry.assign.
+  spawnAgent(genome, brain, gen, from = null, x = rand(20, this.W - 20), y = rand(20, this.H - 20)) {
     const a = new Agent(genome, x, y, brain, gen);
     this.agents.push(a);
     this.counts[a.kind]++;
+    a.species = this.species.assign(genome, from, this.ticks);
+    this.species.join(a.species);
     if (gen > this.maxGen) this.maxGen = gen;
     return a;
   }
@@ -280,6 +314,8 @@ class Simulation {
     if (a.dead) return;
     a.dead = true;
     this.counts[a.kind]--;
+    this.species.leave(a.species, this.ticks);
+    if (this.focus === a.species && a.species.count === 0) this.focus = null;
     this.recordFame(a);
     if (eaten) this.fx(a.pos.x, a.pos.y, a.color, 22, 3.4, 34, 2);
     else this.fx(a.pos.x, a.pos.y, a.color, 10, 0.9, 50, 1.4);
@@ -290,7 +326,7 @@ class Simulation {
     if (a.age < 240) return;
     const list = this.fame[a.kind], f = a.fitness;
     if (list.length >= 12 && f <= list[list.length - 1].fitness) return;
-    list.push({ fitness: f, brain: a.brain, genome: a.genome, gen: a.gen });
+    list.push({ fitness: f, brain: a.brain, genome: a.genome, gen: a.gen, species: a.species.id });
     list.sort((m, n) => n.fitness - m.fitness);
     if (list.length > 12) list.length = 12;
   }
@@ -303,7 +339,7 @@ class Simulation {
     const brain = a.brain.clone().mutate(this.mutationRate);
     const genome = a.genome.clone().mutate(this.mutationRate * EVOLVE.bodyMutation);
     const back = a.heading + Math.PI;
-    const child = this.spawnAgent(genome, brain, a.gen + 1,
+    const child = this.spawnAgent(genome, brain, a.gen + 1, a.species,
       clamp(a.pos.x + Math.cos(back) * t.radius * 2, 5, this.W - 5),
       clamp(a.pos.y + Math.sin(back) * t.radius * 2, 5, this.H - 5));
     child.energy = Math.min(child.traits.childEnergy, t.childEnergy);
@@ -315,15 +351,16 @@ class Simulation {
   // Tops up one diet group from its best genomes; kind -1 draws from the best of every group.
   reseed(kind) {
     const list = kind < 0 ? this.fame.flat() : this.fame[kind];
-    let brain = null, gen = 0;
+    let brain = null, gen = 0, from = null;
     let genome = kind < 0 ? Genome.random() : Genome.founder(kind);
     if (list.length) {
       const e = pick(list);
       brain = e.brain.clone().mutate(Math.max(this.mutationRate, 0.05));
       genome = e.genome.clone().mutate(0.2);
       gen = e.gen + 1;
+      from = this.species.get(e.species);
     }
-    const a = this.spawnAgent(genome, brain, gen);
+    const a = this.spawnAgent(genome, brain, gen, from);
     this.reseeds++;
     this.topUps[a.kind]++;
     this.fx(a.pos.x, a.pos.y, a.color, 12, 1.5, 40, 1.4);
@@ -373,11 +410,14 @@ class Simulation {
       }
       if (agents.length < EVOLVE.minPop) this.reseed(-1);
     }
+    // Species populations for the chart, as flat [id, count, id, count, ...] samples.
     if (this.ticks % 30 === 0) {
-      const h = this.history;
-      h[0].push(this.counts[0]); h[1].push(this.counts[1]); h[2].push(this.counts[2]); h[3].push(plants.length);
-      if (h[0].length > 300) h.forEach(s => s.shift());
+      const sample = [];
+      for (const s of this.species.list) if (s.count) sample.push(s.id, s.count);
+      this.speciesHistory.push(sample);
+      if (this.speciesHistory.length > SPECIES.historyLength) this.speciesHistory.shift();
     }
+    if (this.ticks % 300 === 0) this.species.prune(this.ticks);
     this.tpsCount++;
   }
 

@@ -70,6 +70,21 @@ const EVOLVE = {
   dietGap: 0.1,      // prey must be at least this much more plant-leaning than the hunter
 };
 
+/* ---------- species (tune with tools/headless.js --set SPECIES.threshold=value) ---------- */
+const SPECIES = {
+  // A newborn whose body is further than this from its species' founding body founds a new species.
+  threshold: 1.5,
+  weights: {
+    diet: 4,       // per unit of diet difference (0 to 1)
+    size: 2,       // per full size range of difference
+    partCount: 0.5, // per part more or fewer of one type
+    partShape: 1,  // per matching part whose settings differ across their whole range
+  },
+  keepExtinct: 10800, // ticks an extinct species with no surviving branches stays in the tree (3 min)
+  maxKept: 400,       // beyond this many species in the tree, the longest-extinct dead ends go first
+  historyLength: 300, // species population samples kept for the chart (one every 30 ticks)
+};
+
 /* ---------- diet groups (for display and founders only; the rules never look at them) ---------- */
 const DIET_GROUPS = ['Plant-eaters', 'Mixed diet', 'Meat-eaters'];
 const GROUP_COLOR_VARS = ['--herb', '--omni', '--carn'];
@@ -92,6 +107,6 @@ const PLANT_CAP = 900;
 
 /* ---------- saved worlds ---------- */
 const SAVE_FORMAT = 'neural-tidepool-world';
-const SAVE_VERSION = 2;
+const SAVE_VERSION = 3; // 3 added species; version 2 worlds are still read
 const AUTOSAVE_KEY = 'neural-tidepool:world';
 const AUTOSAVE_PREF_KEY = 'neural-tidepool:keep-progress';

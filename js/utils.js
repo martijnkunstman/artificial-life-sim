@@ -18,6 +18,12 @@ function wrapAngle(a) {
   while (a < -Math.PI) a += TAU;
   return a;
 }
+// Sim time as m:ss, or h:mm:ss past an hour.
+function formatTicks(ticks) {
+  const t = Math.floor(ticks / TICKS_PER_SEC);
+  const hh = Math.floor(t / 3600), mm = Math.floor(t / 60) % 60, ss = t % 60;
+  return (hh ? `${hh}:${String(mm).padStart(2, '0')}` : `${mm}`) + `:${String(ss).padStart(2, '0')}`;
+}
 const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const REDUCED_MOTION = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 

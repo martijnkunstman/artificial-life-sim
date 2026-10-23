@@ -8,6 +8,7 @@ class Agent {
     this.genome = genome;
     this.traits = genome.express();
     this.kind = genome.kind;
+    this.species = null; // set by Simulation.spawnAgent
     this.diet = genome.genes.diet;
     this.bucket = Math.round(this.diet * (DIET_BUCKETS - 1));
     this.color = dietColor(this.diet);
@@ -37,7 +38,7 @@ class Agent {
   // Everything needed to bring this creature back exactly; sensing is recomputed on the next tick.
   toJSON() {
     return {
-      id: this.id, genome: this.genome, brain: this.brain, gen: this.gen,
+      id: this.id, species: this.species.id, genome: this.genome, brain: this.brain, gen: this.gen,
       x: this.pos.x, y: this.pos.y, heading: this.heading, speed: this.speed,
       energy: this.energy, age: this.age, maxAge: this.maxAge, digest: this.digest,
       meals: this.meals, children: this.children, gained: this.gained,
@@ -46,6 +47,7 @@ class Agent {
 
   static fromJSON(d) {
     const a = new Agent(Genome.fromJSON(d.genome), d.x, d.y, NeuralNetwork.fromJSON(d.brain), d.gen);
+    a.speciesId = d.species;
     for (const k of ['id', 'heading', 'speed', 'energy', 'age', 'maxAge', 'digest', 'meals', 'children', 'gained']) a[k] = d[k];
     return a;
   }

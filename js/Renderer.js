@@ -37,6 +37,7 @@ class Renderer {
     this.ctx = canvas.getContext('2d');
     this.octx = overlay.getContext('2d');
     this.sim = sim;
+    this.colorBy = 'species'; // or 'diet'
     this.resize(sim.W, sim.H);
   }
 
@@ -91,7 +92,19 @@ class Renderer {
       const d = b / (DIET_BUCKETS - 1);
       return this.makeSprite(DIET_SPRITE_RADIUS, dietColor(d), SHAPES[d < 1 / 3 ? 0 : d < 2 / 3 ? 1 : 2]);
     });
+    this.hueSprites = new Map();
     this.plantSprite = this.makeSprite(PLANT_RADIUS, this.sim.plantColor, (g, r) => { g.beginPath(); g.arc(0, 0, r, 0, TAU); });
+  }
+
+  // Species colours: one sprite per shape and hue step, baked the first time a species needs it.
+  speciesSprite(s, shape) {
+    const hue = Math.round(s.hue / 8) * 8 % 360, key = shape * 360 + hue;
+    let spr = this.hueSprites.get(key);
+    if (!spr) {
+      spr = this.makeSprite(DIET_SPRITE_RADIUS, `hsl(${hue}, 100%, 67%)`, SHAPES[shape]);
+      this.hueSprites.set(key, spr);
+    }
+    return spr;
   }
 
   clear() {
@@ -117,15 +130,17 @@ class Renderer {
     }
     ctx.globalAlpha = 1;
 
-    // Agents, rotated to heading, scaled slightly by energy.
+    // Agents, rotated to heading, scaled slightly by energy. Shape always follows the diet group;
+    // colour follows either the species or the diet.
+    const bySpecies = this.colorBy === 'species';
     for (const a of sim.agents) {
-      const spr = this.dietSprites[a.bucket], L = spr.size;
+      const spr = bySpecies ? this.speciesSprite(a.species, a.kind) : this.dietSprites[a.bucket], L = spr.size;
       const body = a.traits.radius / DIET_SPRITE_RADIUS;
       const s = (0.75 + 0.45 * a.energy / a.traits.maxEnergy) * body * dpr;
       const c = Math.cos(a.heading) * s, sn = Math.sin(a.heading) * s;
       ctx.setTransform(c, sn, -sn, c, a.pos.x * dpr, a.pos.y * dpr);
       ctx.drawImage(spr.img, -L / 2, -L / 2, L, L);
-      this.drawParts(ctx, a);
+      this.drawParts(ctx, a, bySpecies ? a.species.color : a.color);
     }
 
     // Particles
@@ -146,7 +161,7 @@ class Renderer {
 
   // Parts drawn in the creature's own frame (heading along +x, body radius DIET_SPRITE_RADIUS).
   // Each sits on an ellipse that roughly follows the body outline.
-  drawParts(ctx, a) {
+  drawParts(ctx, a, color) {
     const parts = a.genome.parts, R = DIET_SPRITE_RADIUS;
     const edge = ang => [Math.cos(ang) * R * 1.35, Math.sin(ang) * R];
     ctx.lineCap = 'round';
@@ -159,7 +174,7 @@ class Renderer {
           // Points outward from where it sits, swept halfway toward the tail.
           const side = p.angle >= 0 ? 1 : -1;
           const back = p.angle + (Math.PI - Math.abs(p.angle)) * 0.5 * side;
-          ctx.fillStyle = a.color;
+          ctx.fillStyle = color;
           ctx.globalAlpha = 0.75;
           ctx.beginPath();
           ctx.moveTo(x + Math.cos(p.angle + 1.2) * 2, y + Math.sin(p.angle + 1.2) * 2);
@@ -219,8 +234,24 @@ class Renderer {
     const o = this.octx, sim = this.sim, a = sim.selected;
     o.setTransform(1, 0, 0, 1, 0, 0);
     o.clearRect(0, 0, this.overlay.width, this.overlay.height);
-    if (!a || a.dead) return;
     o.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    // Every member of the species picked in the panel or the family tree.
+    const f = sim.focus;
+    if (f) {
+      o.strokeStyle = f.color;
+      o.lineWidth = 1.2;
+      o.globalAlpha = 0.8;
+      o.beginPath();
+      for (const m of sim.agents) {
+        if (m.species !== f) continue;
+        const r = m.traits.radius * 2.2 + 3;
+        o.moveTo(m.pos.x + r, m.pos.y);
+        o.arc(m.pos.x, m.pos.y, r, 0, TAU);
+      }
+      o.stroke();
+      o.globalAlpha = 1;
+    }
+    if (!a || a.dead) return;
     const x = a.pos.x, y = a.pos.y;
     // What the creature can see: one wedge per eye.
     o.lineWidth = 1;

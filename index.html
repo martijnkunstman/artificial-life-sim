@@ -18,17 +18,16 @@
     <div>
       <h1>Neural Tidepool</h1>
       <div class="mini" aria-live="off">
-        <span style="--c: var(--herb)"><i class="dot"></i><span id="m0">0</span></span>
-        <span style="--c: var(--omni)"><i class="dot"></i><span id="m1">0</span></span>
-        <span style="--c: var(--carn)"><i class="dot"></i><span id="m2">0</span></span>
-        <span style="--c: var(--plant)"><i class="dot"></i><span id="mp">0</span></span>
+        <span title="Creatures"><b id="m-pop">0</b> creatures</span>
+        <span title="Living species"><b id="m-species">0</b> species</span>
+        <span title="Plants" style="--c: var(--plant)"><i class="dot"></i><b id="mp">0</b></span>
       </div>
     </div>
     <button class="icon-btn" id="collapse" aria-expanded="true" aria-controls="panel-body" title="Collapse panel">–</button>
   </header>
 
   <div class="panel-body" id="panel-body">
-    <p class="note">Every creature inherits a body: size and diet genes plus parts (eyes, fins, jaws, spikes, armour, fat) that mutate, appear and disappear. Diet groups emerge from the diet gene; nothing is assigned.</p>
+    <p class="note">Every creature inherits a body: size and diet genes plus parts (eyes, fins, jaws, spikes, armour, fat) that mutate, appear and disappear. When a newborn's body drifts far enough from its species' founder, it founds a new species. Nothing is assigned.</p>
 
     <section class="block">
       <div class="label">Time scale</div>
@@ -47,16 +46,21 @@
         <div><small>Highest gen</small><b id="st-gen">0</b></div>
         <div><small>Ticks / s</small><b id="st-tps">60</b></div>
       </div>
-      <div class="pop" role="table" aria-label="Population by species">
-        <div class="pop-row head" role="row"><span role="columnheader" >Diet group</span><span role="columnheader">Alive</span><span role="columnheader">Gen</span><span role="columnheader">Born</span></div>
-        <div class="pop-row" role="row" style="--c: var(--herb)"><span class="sp" role="cell"><i class="dot"></i><span id="n0">Plant-eaters</span></span><b id="c0" role="cell">0</b><span id="g0" role="cell">0</span><span id="b0" role="cell">0</span></div>
-        <div class="pop-row" role="row" style="--c: var(--omni)"><span class="sp" role="cell"><i class="dot"></i><span id="n1">Mixed diet</span></span><b id="c1" role="cell">0</b><span id="g1" role="cell">0</span><span id="b1" role="cell">0</span></div>
-        <div class="pop-row" role="row" style="--c: var(--carn)"><span class="sp" role="cell"><i class="dot"></i><span id="n2">Meat-eaters</span></span><b id="c2" role="cell">0</b><span id="g2" role="cell">0</span><span id="b2" role="cell">0</span></div>
-        <div class="pop-row" role="row" style="--c: var(--plant)"><span class="sp" role="cell"><i class="dot"></i>Plants</span><b id="cp" role="cell">0</b><span role="cell">–</span><span id="bp" role="cell">0</span></div>
+      <div class="label-row"><span class="label">Species</span><span class="meta" id="sp-summary"></span></div>
+      <div class="pop species">
+        <div class="pop-row head" aria-hidden="true"><span>Name</span><span>Alive</span><span>Diet</span><span>Since</span></div>
+        <div id="species-rows" role="group" aria-label="Largest living species; pick one to highlight its members"></div>
       </div>
       <div class="spark-wrap">
-        <canvas id="spark" aria-label="Population history chart"></canvas>
+        <canvas id="spark" aria-label="Population of each species over time, stacked"></canvas>
         <p class="note" id="reseed-note"></p>
+      </div>
+      <div class="actions">
+        <button class="btn" id="tree-open" aria-expanded="false" aria-controls="tree-panel">Family tree</button>
+        <div class="seg two" role="group" aria-label="Colour creatures by">
+          <button data-color="species" aria-pressed="true">Species</button>
+          <button data-color="diet" aria-pressed="false">Diet</button>
+        </div>
       </div>
       <div class="diet-wrap" id="diet-wrap">
         <div class="label">Diet spread</div>
@@ -104,7 +108,7 @@
       <p class="note">The same seed and window size replay the same world, as long as you don't change the sliders. Add <b>?seed=</b> to the address to open a specific seed.</p>
     </section>
 
-    <span class="keys"><kbd>Space</kbd> pause · <kbd>1</kbd>–<kbd>5</kbd> speed</span>
+    <span class="keys"><kbd>Space</kbd> pause · <kbd>1</kbd>–<kbd>5</kbd> speed · <kbd>T</kbd> family tree · <kbd>C</kbd> colours</span>
   </div>
 </aside>
 
@@ -127,7 +131,19 @@
     <div><small>Defence</small><b id="gn-defence">–</b></div>
   </div>
   <div class="insp-foot" id="in-parts"></div>
+  <div class="insp-foot insp-species"><span id="in-species"></span><button class="link-btn" id="in-focus" aria-pressed="false">Highlight species</button></div>
   <div class="insp-foot" id="in-foot">Following the deepest lineage. Click any creature to inspect it.</div>
+</aside>
+
+<aside class="tree-panel" id="tree-panel" aria-label="Family tree of species" hidden>
+  <header class="tree-head">
+    <b>Family tree</b>
+    <label class="check" for="tree-extinct"><input type="checkbox" id="tree-extinct" checked> Extinct branches</label>
+    <button class="icon-btn" id="tree-close" title="Close family tree" aria-label="Close family tree">×</button>
+  </header>
+  <div class="tree-scroll" id="tree-scroll"><canvas id="tree" aria-label="Family tree: one line per species from when it was founded to when it died out, joined to the species it branched from"></canvas></div>
+  <div class="tree-axis" aria-hidden="true"><span id="tree-t0">0:00</span><span>time</span><span id="tree-t1">0:00</span></div>
+  <p class="note" id="tree-info" role="status"></p>
 </aside>
 
 <script src="js/Random.js" defer></script>
@@ -136,12 +152,14 @@
 <script src="js/Vector.js" defer></script>
 <script src="js/NeuralNetwork.js" defer></script>
 <script src="js/Genome.js" defer></script>
+<script src="js/Species.js" defer></script>
 <script src="js/Plant.js" defer></script>
 <script src="js/Agent.js" defer></script>
 <script src="js/SpatialGrid.js" defer></script>
 <script src="js/ParticleSystem.js" defer></script>
 <script src="js/Simulation.js" defer></script>
 <script src="js/Renderer.js" defer></script>
+<script src="js/TreeView.js" defer></script>
 <script src="js/UIController.js" defer></script>
 <script src="js/AutoSave.js" defer></script>
 <script src="js/main.js" defer></script>

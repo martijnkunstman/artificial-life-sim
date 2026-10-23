@@ -20,6 +20,8 @@ class UIController {
     this.spark = this.setupCanvas(this.$('spark'));
     this.diet = this.setupCanvas(this.$('diet'));
     this.brain = this.setupCanvas(this.$('brain'));
+    this.stats = new Map(); // species id -> { n, diet, size } over its living members
+    this.tree = new TreeView(this);
   }
 
   setupCanvas(el) {
@@ -92,6 +94,14 @@ class UIController {
     });
     this.showSeed();
 
+    this.colorButtons = [...document.querySelectorAll('[data-color]')];
+    for (const b of this.colorButtons) b.addEventListener('click', () => this.setColorBy(b.dataset.color));
+    this.$('tree-open').addEventListener('click', () => this.tree.toggle());
+    this.$('in-focus').addEventListener('click', () => {
+      const s = sim.selected && sim.selected.species;
+      if (s) this.setFocus(sim.focus === s ? null : s);
+    });
+
     this.$('save').addEventListener('click', () => this.saveWorld());
     this.$('load').addEventListener('click', () => this.$('load-file').click());
     this.$('load-file').addEventListener('change', e => {
@@ -123,6 +133,8 @@ class UIController {
       const map = { '1': 0, '2': 1, '3': 2, '4': 5, '5': 'max' };
       if (e.code === 'Space') { e.preventDefault(); this.setSpeed(sim.speed === 0 ? this.resumeSpeed : 0); }
       else if (e.key in map) this.setSpeed(map[e.key]);
+      else if (e.key === 't' || e.key === 'T') this.tree.toggle();
+      else if (e.key === 'c' || e.key === 'C') this.setColorBy(sim.renderer.colorBy === 'species' ? 'diet' : 'species');
     });
 
     sim.renderer.canvas.addEventListener('click', e => {
@@ -135,11 +147,34 @@ class UIController {
     });
   }
 
+  setColorBy(mode) {
+    this.sim.renderer.colorBy = mode;
+    for (const b of this.colorButtons) b.setAttribute('aria-pressed', String(b.dataset.color === mode));
+  }
+
+  // Highlight one species' members on the map, in the species list and in the family tree.
+  setFocus(s) {
+    this.sim.focus = s;
+    this.lastStats = 0;
+    this.tree.draw();
+  }
+
+  // One line about a species, for the family tree and the inspector.
+  describeSpecies(s) {
+    const sp = this.sim.species, parent = sp.get(s.parent), st = this.stats.get(s.id);
+    const diet = st ? st.diet / st.n : s.rep.genes.diet, size = st ? st.size / st.n : s.rep.genes.size;
+    const origin = parent ? `branched from ${parent.name} at ${formatTicks(s.born)}` : `founded at ${formatTicks(s.born)}`;
+    const state = s.count ? `${s.count} alive (peak ${s.peak})` : `extinct at ${formatTicks(s.died)}, peak ${s.peak}`;
+    return `${s.name}: ${state}, ${s.total} ever. ${origin[0].toUpperCase()}${origin.slice(1)}. ` +
+      `${DIET_GROUPS[diet < 1 / 3 ? 0 : diet < 2 / 3 ? 1 : 2].replace(/s$/, '')}, diet ${diet.toFixed(2)}, size ${size.toFixed(2)}.`;
+  }
+
   startWorld(seed) {
     this.sim.reset(seed);
     this.lastStats = 0;
     this.showSeed();
     this.autosave.save();
+    this.tree.draw();
   }
 
   saveWorld() {
@@ -165,6 +200,7 @@ class UIController {
       this.syncSliders();
       this.showSeed();
       this.lastStats = 0;
+      this.tree.draw();
       const sized = data.width === sim.W && data.height === sim.H;
       this.setStatus(`Loaded ${file.name}: ${sim.agents.length} creatures at gen ${sim.maxGen}.` +
         (sized ? '' : ` It was saved at ${data.width}×${data.height}, so creatures outside this window were moved inside and the run will not replay exactly.`));
@@ -206,6 +242,7 @@ class UIController {
       this.drawDiet();
     }
     if (now - this.lastBrain > 80) { this.lastBrain = now; this.drawBrain(); }
+    this.tree.frame(now);
   }
 
   updateStats() {
@@ -214,23 +251,66 @@ class UIController {
       this.reportedSaveError = true;
       this.setStatus("This world is too large for this browser's storage, so it is no longer kept automatically. Use Save world to keep it as a file.");
     }
-    const gens = [0, 0, 0];
-    for (const a of sim.agents) if (a.gen > gens[a.kind]) gens[a.kind] = a.gen;
-    for (let k = 0; k < 3; k++) {
-      $('c' + k).textContent = sim.counts[k];
-      $('m' + k).textContent = sim.counts[k];
-      $('g' + k).textContent = gens[k];
-      $('b' + k).textContent = sim.births[k].toLocaleString();
-    }
-    $('cp').textContent = sim.plants.length;
+    $('m-pop').textContent = sim.agents.length;
+    $('m-species').textContent = sim.species.alive;
     $('mp').textContent = sim.plants.length;
-    $('bp').textContent = sim.plantsSpawned.toLocaleString();
     $('st-gen').textContent = sim.maxGen;
-    $('reseed-note').innerHTML = `Population over the last 150 s of sim time. Gen is the deepest living lineage. A diet group below ${EVOLVE.groupFloor}, or a world below ${EVOLVE.minPop}, is topped up with mutated copies of the best genomes so far (<b>${sim.reseeds}</b> so far).`;
     $('st-tps').textContent = sim.speed === 0 ? '0' : sim.tps.toLocaleString();
-    const t = Math.floor(sim.ticks / TICKS_PER_SEC);
-    const hh = Math.floor(t / 3600), mm = Math.floor(t / 60) % 60, ss = t % 60;
-    $('st-time').textContent = (hh ? `${hh}:${String(mm).padStart(2, '0')}` : `${mm}`) + `:${String(ss).padStart(2, '0')}`;
+    $('st-time').textContent = formatTicks(sim.ticks);
+    $('reseed-note').innerHTML = `Each species' population over the last 150 s of sim time, related species side by side. A diet group below ${EVOLVE.groupFloor}, or a world below ${EVOLVE.minPop}, is topped up with mutated copies of the best genomes so far (<b>${sim.reseeds}</b> so far).`;
+    this.updateSpecies();
+  }
+
+  // The largest living species, with their members' average diet.
+  updateSpecies() {
+    const sim = this.sim, $ = this.$, stats = this.stats;
+    stats.clear();
+    for (const a of sim.agents) {
+      let st = stats.get(a.species.id);
+      if (!st) stats.set(a.species.id, st = { n: 0, diet: 0, size: 0 });
+      st.n++; st.diet += a.diet; st.size += a.genome.genes.size;
+    }
+    const living = sim.species.list.filter(s => s.count > 0).sort((m, n) => n.count - m.count);
+    const top = living.slice(0, 6);
+    if (sim.focus && !top.includes(sim.focus)) top.push(sim.focus);
+    const ever = sim.species.nextId - 1;
+    $('sp-summary').textContent = `${living.length} alive · ${ever.toLocaleString()} ever`;
+
+    // Reuse the row buttons so a click is not lost to a rebuild between press and release.
+    const box = $('species-rows');
+    while (box.children.length < top.length + 1) {
+      const b = document.createElement('button');
+      b.className = 'pop-row sp-row';
+      b.innerHTML = '<span class="sp"><i class="dot"></i><span></span></span><b></b><span></span><span></span>';
+      b.addEventListener('click', () => {
+        const s = sim.species.get(Number(b.dataset.id));
+        if (s) this.setFocus(sim.focus === s ? null : s);
+      });
+      box.appendChild(b);
+    }
+    [...box.children].forEach((b, i) => {
+      const s = top[i];
+      if (!s) {
+        b.hidden = i !== top.length || living.length <= top.length;
+        b.disabled = true;
+        b.querySelector('.sp > span').textContent = `+${living.length - top.length} smaller species`;
+        b.querySelector('.dot').style.display = 'none';
+        for (const el of [...b.children].slice(1)) el.textContent = '';
+        b.removeAttribute('aria-pressed');
+        return;
+      }
+      const st = stats.get(s.id), cells = b.children;
+      b.hidden = false;
+      b.disabled = false;
+      b.dataset.id = s.id;
+      b.style.setProperty('--c', s.color);
+      b.querySelector('.dot').style.display = '';
+      b.querySelector('.sp > span').textContent = s.name;
+      cells[1].textContent = s.count;
+      cells[2].textContent = st ? (st.diet / st.n).toFixed(2) : '–';
+      cells[3].textContent = formatTicks(s.born);
+      b.setAttribute('aria-pressed', String(sim.focus === s));
+    });
   }
 
   // Histogram of the diet gene across the living population, plus each diet group's average body.
@@ -271,36 +351,47 @@ class UIController {
     ctx.fillText(`peak ${max}`, 0, 0);
   }
 
+  // Stacked populations of every species over time, in family-tree order so relatives sit together.
   drawSpark() {
     if (!this.fitCanvas(this.spark)) return;
-    const { ctx, w, h } = this.spark, sim = this.sim, hist = sim.history;
+    const { ctx, w, h } = this.spark, sim = this.sim, hist = sim.speciesHistory, n = SPECIES.historyLength;
     ctx.clearRect(0, 0, w, h);
-    const top = 10, bottom = h - 2, n = 300;
+    const top = 10, bottom = h - 2, len = hist.length;
+    const order = sim.species.order(), slot = new Map(order.map((s, i) => [s.id, i]));
+    const K = order.length + 1; // the last slot collects species already dropped from the tree
+    const dense = hist.map(sample => {
+      const row = new Float32Array(K);
+      for (let i = 0; i < sample.length; i += 2) {
+        const k = slot.has(sample[i]) ? slot.get(sample[i]) : K - 1;
+        row[k] += sample[i + 1];
+      }
+      return row;
+    });
     let max = 10;
-    for (let k = 0; k < 3; k++) for (const v of hist[k]) if (v > max) max = v;
+    for (const row of dense) { let t = 0; for (const v of row) t += v; if (t > max) max = t; }
     ctx.strokeStyle = this.col.line; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(0, bottom + 0.5); ctx.lineTo(w, bottom + 0.5); ctx.stroke();
     ctx.fillStyle = this.col.muted;
     ctx.font = `10px ${this.col.mono}`;
     ctx.textBaseline = 'top';
     ctx.fillText(`peak ${max}`, 0, 0);
-    const len = hist[0].length;
     if (len < 2) return;
-    const x0 = w - (len - 1) * (w / (n - 1));
-    for (let k = 0; k < 3; k++) {
-      const s = hist[k];
-      ctx.strokeStyle = this.groupColors[k];
-      ctx.lineWidth = 1.5;
+    const dx = w / (n - 1), x0 = w - (len - 1) * dx, scale = (bottom - top) / max;
+    const base = new Float32Array(len);
+    for (let k = 0; k < K; k++) {
+      let any = false;
+      for (let j = 0; j < len; j++) if (dense[j][k]) { any = true; break; }
+      if (!any) continue;
+      const s = order[k];
+      ctx.fillStyle = s ? s.color : this.col.muted;
+      ctx.globalAlpha = !sim.focus || sim.focus === s ? 0.85 : 0.3;
       ctx.beginPath();
-      for (let i = 0; i < len; i++) {
-        const x = x0 + i * (w / (n - 1)), y = bottom - (s[i] / max) * (bottom - top);
-        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-      }
-      ctx.stroke();
-      const ly = bottom - (s[len - 1] / max) * (bottom - top);
-      ctx.fillStyle = this.groupColors[k];
-      ctx.beginPath(); ctx.arc(w - 2, ly, 2.2, 0, TAU); ctx.fill();
+      for (let j = 0; j < len; j++) ctx.lineTo(x0 + j * dx, bottom - (base[j] + dense[j][k]) * scale);
+      for (let j = len - 1; j >= 0; j--) ctx.lineTo(x0 + j * dx, bottom - base[j] * scale);
+      ctx.fill();
+      for (let j = 0; j < len; j++) base[j] += dense[j][k];
     }
+    ctx.globalAlpha = 1;
   }
 
   drawBrain() {
@@ -309,9 +400,14 @@ class UIController {
     const { ctx, w, h } = this.brain;
     ctx.clearRect(0, 0, w, h);
     if (!a) return;
-    $('in-dot').style.setProperty('--c', a.color);
-    $('in-ebar').style.setProperty('--c', a.color);
-    $('in-name').textContent = a.traits.name;
+    const s = a.species, parent = this.sim.species.get(s.parent);
+    $('in-dot').style.setProperty('--c', s.color);
+    $('in-ebar').style.setProperty('--c', s.color);
+    $('in-name').textContent = s.name;
+    $('in-species').textContent = `${a.traits.name.replace(/s$/, '')} · species of ${s.count}` +
+      (parent ? `, branched from ${parent.name} at ${formatTicks(s.born)}` : `, founded at ${formatTicks(s.born)}`);
+    $('in-focus').setAttribute('aria-pressed', String(this.sim.focus === s));
+    $('in-focus').textContent = this.sim.focus === s ? 'Stop highlighting' : 'Highlight species';
     $('in-meta').textContent = `#${a.id} · gen ${a.gen}`;
     $('in-energy').style.width = `${Math.max(0, Math.min(1, a.energy / a.traits.maxEnergy)) * 100}%`;
     const t = a.traits;

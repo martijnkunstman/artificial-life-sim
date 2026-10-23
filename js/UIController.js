@@ -22,6 +22,7 @@ class UIController {
     this.brain = this.setupCanvas(this.$('brain'));
     this.stats = new Map(); // species id -> { n, diet, size } over its living members
     this.tree = new TreeView(this);
+    this.progress = new ProgressView(this);
   }
 
   setupCanvas(el) {
@@ -97,6 +98,7 @@ class UIController {
     this.colorButtons = [...document.querySelectorAll('[data-color]')];
     for (const b of this.colorButtons) b.addEventListener('click', () => this.setColorBy(b.dataset.color));
     this.$('tree-open').addEventListener('click', () => this.tree.toggle());
+    this.$('progress-open').addEventListener('click', () => this.progress.toggle());
     this.$('in-focus').addEventListener('click', () => {
       const s = sim.selected && sim.selected.species;
       if (s) this.setFocus(sim.focus === s ? null : s);
@@ -134,6 +136,7 @@ class UIController {
       if (e.code === 'Space') { e.preventDefault(); this.setSpeed(sim.speed === 0 ? this.resumeSpeed : 0); }
       else if (e.key in map) this.setSpeed(map[e.key]);
       else if (e.key === 't' || e.key === 'T') this.tree.toggle();
+      else if (e.key === 'p' || e.key === 'P') this.progress.toggle();
       else if (e.key === 'c' || e.key === 'C') this.setColorBy(sim.renderer.colorBy === 'species' ? 'diet' : 'species');
     });
 
@@ -175,6 +178,7 @@ class UIController {
     this.showSeed();
     this.autosave.save();
     this.tree.draw();
+    this.progress.toggle(this.progress.open);
   }
 
   saveWorld() {
@@ -201,6 +205,7 @@ class UIController {
       this.showSeed();
       this.lastStats = 0;
       this.tree.draw();
+      this.progress.toggle(this.progress.open);
       const sized = data.width === sim.W && data.height === sim.H;
       this.setStatus(`Loaded ${file.name}: ${sim.agents.length} creatures at gen ${sim.maxGen}.` +
         (sized ? '' : ` It was saved at ${data.width}×${data.height}, so creatures outside this window were moved inside and the run will not replay exactly.`));
@@ -243,6 +248,7 @@ class UIController {
     }
     if (now - this.lastBrain > 80) { this.lastBrain = now; this.drawBrain(); }
     this.tree.frame(now);
+    this.progress.frame(now);
   }
 
   updateStats() {

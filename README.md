@@ -66,6 +66,21 @@ Each species gets a generated name and a colour. Root species take their colour 
 
 **In the inspector**, the selected creature's species is shown with what it branched from; *Highlight species* marks its relatives on the map.
 
+## Progress: are they actually getting better?
+
+Population, lifespan and offspring per creature settle into an equilibrium even while creatures improve, because their rivals and prey improve too. A better forager shares the same plants with other better foragers. So the **Progress** window (button in the panel, or `P`) measures improvement directly, with exams.
+
+Every 40 seconds of sim time, a few living creatures from each diet group sit standardized exams in a private test arena:
+
+- **Foraging exam** (plant-eaters and mixed diet): alone in a 480×480 arena with 40 plants, each eaten plant replaced elsewhere. Score: plants eaten per minute, over two 15-second runs on two fixed layouts.
+- **Hunting exam** (mixed diet and meat-eaters): 20 seconds in a 480×480 arena with 4 standard prey, each catch replaced elsewhere. The prey are founder plant-eaters (size 0.8) with untrained brains, the same ones every time, and they react to the hunter as their random brains dictate. Score: prey caught per minute.
+
+Every examinee gets the same arena, the same plant layouts, the same prey and a steady half-full energy store, so scores can be compared across the whole run. The first round also examines 8 **untrained founders** per group (the founders' bodies with fresh random brains); their score is the baseline, drawn as a dashed line. A rising line well above its dashed line means evolution is producing better creatures, not just more of them.
+
+The window shows each exam's raw scores as dots, a smoothed line through the last 5 rounds, and a verdict per group: the recent score, how many times the untrained score that is, and whether it is rising, falling or holding steady compared with the rounds before. A third chart shows **self-sufficiency**: of the creatures added to each group since the last round, the share that were born rather than topped up.
+
+Exams run on copies of the creatures with their own position in the random generator, so they never change how the world plays out. A round is spread over the following ticks (30 exam ticks per world tick), so it never stalls a frame. Exams cost about a fifth of the simulation's time, which only shows at Max speed. Over a long run, neighbouring rounds are merged in pairs once there are 360, and exams then run half as often, so the whole history fits. A world saved in the middle of a round skips that round's score.
+
 ## How a creature thinks
 
 Every creature has a feedforward network with 14 inputs, one hidden layer of 12 neurons (tanh) and 4 outputs (sigmoid). The network controls all movement. There are no hardcoded steering rules.
@@ -106,10 +121,11 @@ Whether a creature flees threats or chases prey depends entirely on what its net
 | Keep progress in this browser | On by default: the world is kept in this browser and resumed on your next visit. Turning it off removes the kept world. |
 | Species list | Click a species to highlight its members on the map; click again to stop |
 | Family tree | Opens the family tree of species |
+| Progress | Opens the exam charts: are creatures getting better? |
 | Colour: Species, Diet | Colours creatures by species or by diet |
 | Click a creature | Shows its network firing live, its body, parts and species in the inspector, and its eye cones on the map |
 
-Keyboard: `Space` pauses and resumes, `1` to `5` pick a speed, `T` opens or closes the family tree, `C` switches the colours.
+Keyboard: `Space` pauses and resumes, `1` to `5` pick a speed, `T` opens or closes the family tree, `P` the progress window, `C` switches the colours.
 
 ## Seeds and saved worlds
 
@@ -123,7 +139,7 @@ A saved world also stores the generator's position, so loading it continues exac
 
 ## Headless balance runner
 
-`tools/headless.js` runs the same simulation classes in Node without drawing, over many seeds, and reports how each diet group fares in the second half of each run, plus how many species are alive at the end, how many of those have at least 5 members, and how many were founded:
+`tools/headless.js` runs the same simulation classes in Node without drawing, over many seeds, and reports how each diet group fares in the second half of each run, plus how many species are alive at the end, how many of those have at least 5 members, and how many were founded. It also reports each exam's average score over the last third of each run, as a multiple of the untrained founders' score:
 
 ```bash
 node tools/headless.js --seeds 10 --minutes 10
@@ -159,8 +175,10 @@ js/Agent.js            one creature: sensing, thinking, moving, energy
 js/SpatialGrid.js      grid for fast nearest-neighbour and collision lookups
 js/ParticleSystem.js   pooled particles for eating, birth and death bursts
 js/Simulation.js       world state, rules and the fixed-step game loop
+js/Progress.js         exams in a private test arena, run a slice per tick, and their record
 js/Renderer.js         canvas drawing: glowing sprites, trails, selection
 js/TreeView.js         family tree panel
+js/ProgressView.js     progress window: exam charts and verdicts
 js/UIController.js     panel, dashboard, species list, charts and brain inspector
 js/AutoSave.js         keeps the world in localStorage and resumes it on the next visit
 js/main.js             startup

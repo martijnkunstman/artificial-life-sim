@@ -57,6 +57,10 @@
       </div>
       <div class="actions">
         <button class="btn" id="tree-open" aria-expanded="false" aria-controls="tree-panel">Family tree</button>
+        <button class="btn" id="progress-open" aria-expanded="false" aria-controls="progress-panel">Progress</button>
+      </div>
+      <div class="color-row">
+        <span class="label">Colour by</span>
         <div class="seg two" role="group" aria-label="Colour creatures by">
           <button data-color="species" aria-pressed="true">Species</button>
           <button data-color="diet" aria-pressed="false">Diet</button>
@@ -108,7 +112,7 @@
       <p class="note">The same seed and window size replay the same world, as long as you don't change the sliders. Add <b>?seed=</b> to the address to open a specific seed.</p>
     </section>
 
-    <span class="keys"><kbd>Space</kbd> pause · <kbd>1</kbd>–<kbd>5</kbd> speed · <kbd>T</kbd> family tree · <kbd>C</kbd> colours</span>
+    <span class="keys"><kbd>Space</kbd> pause · <kbd>1</kbd>–<kbd>5</kbd> speed · <kbd>T</kbd> family tree · <kbd>P</kbd> progress · <kbd>C</kbd> colours</span>
   </div>
 </aside>
 
@@ -146,6 +150,31 @@
   <p class="note" id="tree-info" role="status"></p>
 </aside>
 
+<aside class="progress-panel" id="progress-panel" aria-label="Is evolution producing better creatures?" hidden>
+  <header class="tree-head">
+    <b>Progress</b>
+    <button class="icon-btn" id="progress-close" title="Close progress" aria-label="Close progress">×</button>
+  </header>
+  <p class="note">Population numbers settle even while creatures improve, because their rivals improve too. So every so often a few living creatures sit the same exams in a private arena, and are scored against untrained founders (dashed lines).</p>
+  <div class="pg-chart">
+    <div class="label-row"><span class="label">Foraging exam</span><span class="meta">plants eaten per minute, alone</span></div>
+    <canvas id="pg-forage" aria-label="Foraging exam scores over time"></canvas>
+    <p class="note" id="pg-forage-v"></p>
+  </div>
+  <div class="pg-chart">
+    <div class="label-row"><span class="label">Hunting exam</span><span class="meta">standard prey caught per minute</span></div>
+    <canvas id="pg-hunt" aria-label="Hunting exam scores over time"></canvas>
+    <p class="note" id="pg-hunt-v"></p>
+  </div>
+  <div class="pg-chart">
+    <div class="label-row"><span class="label">Self-sufficiency</span><span class="meta">born rather than topped up</span></div>
+    <canvas id="pg-self" aria-label="Share of new creatures born rather than topped up, over time"></canvas>
+    <p class="note" id="pg-self-v"></p>
+  </div>
+  <p class="note pg-legend"><span style="--c: var(--herb)"><i class="dot"></i>Plant-eaters</span><span style="--c: var(--omni)"><i class="dot"></i>Mixed diet</span><span style="--c: var(--carn)"><i class="dot"></i>Meat-eaters</span><span>- - untrained</span></p>
+  <p class="note" id="pg-status" role="status"></p>
+</aside>
+
 <script src="js/Random.js" defer></script>
 <script src="js/utils.js" defer></script>
 <script src="js/config.js" defer></script>
@@ -158,8 +187,10 @@
 <script src="js/SpatialGrid.js" defer></script>
 <script src="js/ParticleSystem.js" defer></script>
 <script src="js/Simulation.js" defer></script>
+<script src="js/Progress.js" defer></script>
 <script src="js/Renderer.js" defer></script>
 <script src="js/TreeView.js" defer></script>
+<script src="js/ProgressView.js" defer></script>
 <script src="js/UIController.js" defer></script>
 <script src="js/AutoSave.js" defer></script>
 <script src="js/main.js" defer></script>

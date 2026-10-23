@@ -3,7 +3,8 @@
 
 /*
  * Headless balance runner: runs the real simulation classes in Node, without drawing,
- * over many seeds, and reports how each diet group fares and how many species arise.
+ * over many seeds, and reports how each diet group fares, how many species arise and how the
+ * exams (js/Progress.js) score against untrained founders.
  *
  *   node tools/headless.js                      10 seeds x 10 sim-minutes
  *   node tools/headless.js --seeds 20 --minutes 15
@@ -18,7 +19,7 @@ const vm = require('vm');
 // The browser loads these as classic scripts in this order; Renderer, UIController and main stay out.
 const SIM_FILES = [
   'Random.js', 'utils.js', 'config.js', 'Vector.js', 'NeuralNetwork.js', 'Genome.js',
-  'Species.js', 'Plant.js', 'Agent.js', 'SpatialGrid.js', 'ParticleSystem.js', 'Simulation.js',
+  'Species.js', 'Plant.js', 'Agent.js', 'SpatialGrid.js', 'ParticleSystem.js', 'Simulation.js', 'Progress.js',
 ];
 const GROUPS = ['plant', 'mixed', 'meat'];
 const SAMPLE_EVERY = 300; // ticks (5 s of sim time)
@@ -116,7 +117,19 @@ function runSeed(context, opts, seed) {
     largest: Math.max(0, ...sim.species.list.map(s => s.count)),
   };
 
-  return { seed, groups, maxGen: sim.maxGen, population: sim.agents.length, body, bodies, species, tps: Math.round(totalTicks / seconds) };
+  // Exams (see js/Progress.js): average score over the last third of the run against untrained founders.
+  const pg = sim.progress, examGroups = { forage: ['plant', 'mixed'], hunt: ['mixed', 'meat'] };
+  const exams = {};
+  for (const exam of ['forage', 'hunt']) {
+    exams[exam] = examGroups[exam].map((name, slot) => {
+      const pts = pg.series(exam, slot).filter(p => p.t >= totalTicks * 2 / 3);
+      const late = pts.length ? pts.reduce((s, p) => s + p.v, 0) / pts.length : null;
+      const baseline = pg.baseline ? pg.baseline[exam][slot] : null;
+      return { name, late, baseline, ratio: late !== null && baseline ? late / baseline : null };
+    });
+  }
+
+  return { seed, groups, maxGen: sim.maxGen, population: sim.agents.length, body, bodies, species, exams, tps: Math.round(totalTicks / seconds) };
 }
 
 function pad(v, n) { return String(v).padStart(n); }
@@ -131,7 +144,9 @@ function main() {
     if (!opts.json) {
       const cols = r.groups.map(g => `${g.name} ${pad(g.lateMean.toFixed(0), 3)} (${pad(g.lateBirths, 4)}b/${pad(g.lateTopUps, 3)}t)${g.thriving ? '*' : ' '}`);
       const sp = r.species;
+      const ex = ['forage', 'hunt'].map(e => `${e} ${r.exams[e].map(g => `${g.name} ${g.ratio === null ? '  –  ' : pad(g.ratio.toFixed(1), 4) + 'x'}`).join(' ')}`);
       console.log(`seed ${pad(r.seed, 4)}  ${cols.join('  ')}  gen ${pad(r.maxGen, 3)}  size ${r.body.size.toFixed(2)}  species ${pad(sp.alive, 2)} (${sp.established} with 5+) of ${pad(sp.founded, 4)}  ${r.tps} t/s`);
+      console.log(`           exams vs untrained, last third: ${ex.join('   ')}`);
     }
   }
 
@@ -158,6 +173,15 @@ function main() {
   }
   const avgSp = k => (results.reduce((s, r) => s + r.species[k], 0) / results.length).toFixed(1);
   console.log(`  species: ${avgSp('alive')} alive at the end (${avgSp('established')} with 5+ members), ${avgSp('founded')} founded per run, largest ${avgSp('largest')} members`);
+  for (const exam of ['forage', 'hunt']) {
+    const line = results[0].exams[exam].map((g, slot) => {
+      const rs = results.map(r => r.exams[exam][slot]).filter(x => x.ratio !== null);
+      if (!rs.length) return `${g.name} –`;
+      const lates = rs.map(x => x.late).sort((a, b) => a - b), ratios = rs.map(x => x.ratio).sort((a, b) => a - b);
+      return `${g.name} ${lates[Math.floor(lates.length / 2)].toFixed(1)} (median ${ratios[Math.floor(ratios.length / 2)].toFixed(1)}x untrained ${g.baseline.toFixed(1)}, better in ${rs.filter(x => x.ratio > 1).length} of ${rs.length})`;
+    });
+    console.log(`  ${exam} exam, last third: ${line.join('   ')}`);
+  }
   // Average final body per group, over the seeds where that group had living members.
   const types = Object.keys(results[0].bodies[0]).filter(k => k !== 'n');
   console.log(`\nAverage body at the end (per creature)\n  group  ${types.map(t => t.padStart(7)).join('')}`);

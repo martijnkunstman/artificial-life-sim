@@ -18,6 +18,7 @@ class Simulation {
     this.eyeBuf = new Float64Array(PART_SPECS.eye.max * 4);
     this.plantColor = plantColor;
     this.species = new SpeciesRegistry();
+    this.progress = new Progress();
     this.renderer = null;
     this.ui = null;
     this.acc = 0;
@@ -45,6 +46,7 @@ class Simulation {
     this.topUps = [0, 0, 0];
     this.species.clear();
     this.speciesHistory = [];
+    this.progress.clear();
     this.plantAcc = 0;
     this.selected = null;
     this.pinned = false;
@@ -81,7 +83,7 @@ class Simulation {
       zones: this.zones, plantAcc: this.plantAcc,
       births: this.births, plantsSpawned: this.plantsSpawned, maxGen: this.maxGen,
       reseeds: this.reseeds, topUps: this.topUps,
-      species: this.species, speciesHistory: this.speciesHistory,
+      species: this.species, speciesHistory: this.speciesHistory, progress: this.progress,
       fame: this.fame.map(list => list.map(e => ({ fitness: e.fitness, gen: e.gen, species: e.species, genome: e.genome, brain: e.brain }))),
     };
   }
@@ -109,6 +111,7 @@ class Simulation {
     })));
     this.counts = [0, 0, 0];
     for (const a of this.agents) this.counts[a.kind]++;
+    this.progress.load(d.progress);
     if (d.species) {
       this.species.load(d.species);
       this.speciesHistory = d.speciesHistory;
@@ -418,6 +421,7 @@ class Simulation {
       if (this.speciesHistory.length > SPECIES.historyLength) this.speciesHistory.shift();
     }
     if (this.ticks % 300 === 0) this.species.prune(this.ticks);
+    this.progress.step(this);
     this.tpsCount++;
   }
 

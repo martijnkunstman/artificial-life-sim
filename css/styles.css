@@ -250,6 +250,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .sp-row:hover:not(:disabled) { background: rgba(127, 216, 255, 0.06); }
 .sp-row[aria-pressed="true"] { background: color-mix(in srgb, var(--c) 16%, transparent); }
 .sp-row:disabled { cursor: default; }
+.sp-row[hidden] { display: none; }
 .sp-row:disabled .sp { color: var(--muted); font-size: 11.5px; }
 .sp-row .sp > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .seg.two { grid-template-columns: repeat(2, 1fr); flex: 1; }
@@ -295,4 +296,36 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 
 @media (max-width: 720px) {
   .tree-panel { left: max(16px, env(safe-area-inset-left, 0px)); width: auto; min-width: 0; height: calc(44vh - 32px); }
+}
+
+/* Progress window */
+.color-row { display: flex; align-items: center; gap: 12px; }
+.progress-panel {
+  position: fixed;
+  right: calc(max(16px, env(safe-area-inset-right, 0px)) + 316px);
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  width: min(420px, calc(100vw - 680px));
+  min-width: 300px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(14px) saturate(1.25);
+  backdrop-filter: blur(14px) saturate(1.25);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.progress-panel[hidden] { display: none; }
+.pg-chart { display: flex; flex-direction: column; gap: 3px; border-top: 1px solid var(--line); padding-top: 6px; }
+.pg-chart .label-row { margin-top: 0; }
+.pg-chart canvas { width: 100%; height: 64px; display: block; }
+.pg-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.pg-legend span { display: inline-flex; align-items: center; gap: 5px; }
+
+@media (max-width: 720px) {
+  .progress-panel { left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); top: calc(16px + env(safe-area-inset-top, 0px)); bottom: auto; width: auto; min-width: 0; max-height: calc(44vh - 32px); }
 }

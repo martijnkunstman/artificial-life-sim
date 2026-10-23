@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Neural Tidepool</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<canvas id="world" class="layer" aria-label="Ecosystem simulation"></canvas>
+<canvas id="overlay" class="layer" aria-hidden="true"></canvas>
+
+<aside class="panel" id="panel">
+  <header class="panel-head">
+    <div>
+      <h1>Neural Tidepool</h1>
+      <div class="mini" aria-live="off">
+        <span style="--c: var(--herb)"><i class="dot"></i><span id="m0">0</span></span>
+        <span style="--c: var(--omni)"><i class="dot"></i><span id="m1">0</span></span>
+        <span style="--c: var(--carn)"><i class="dot"></i><span id="m2">0</span></span>
+        <span style="--c: var(--plant)"><i class="dot"></i><span id="mp">0</span></span>
+      </div>
+    </div>
+    <button class="icon-btn" id="collapse" aria-expanded="true" aria-controls="panel-body" title="Collapse panel">–</button>
+  </header>
+
+  <div class="panel-body" id="panel-body">
+    <section class="block">
+      <div class="label">Time scale</div>
+      <div class="seg" role="group" aria-label="Simulation speed">
+        <button id="sp-0" data-speed="0" aria-pressed="false">Pause</button>
+        <button id="sp-1" data-speed="1" aria-pressed="true">1x</button>
+        <button id="sp-2" data-speed="2" aria-pressed="false">2x</button>
+        <button id="sp-5" data-speed="5" aria-pressed="false">5x</button>
+        <button id="sp-max" data-speed="max" aria-pressed="false">Max</button>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="clock">
+        <div><small>Sim time</small><b id="st-time">0:00</b></div>
+        <div><small>Highest gen</small><b id="st-gen">0</b></div>
+        <div><small>Ticks / s</small><b id="st-tps">60</b></div>
+      </div>
+      <div class="pop" role="table" aria-label="Population by species">
+        <div class="pop-row head" role="row"><span role="columnheader">Species</span><span role="columnheader">Alive</span><span role="columnheader">Gen</span><span role="columnheader">Born</span></div>
+        <div class="pop-row" role="row" style="--c: var(--herb)"><span class="sp" role="cell"><i class="dot"></i>Herbivore</span><b id="c0" role="cell">0</b><span id="g0" role="cell">0</span><span id="b0" role="cell">0</span></div>
+        <div class="pop-row" role="row" style="--c: var(--omni)"><span class="sp" role="cell"><i class="dot"></i>Omnivore</span><b id="c1" role="cell">0</b><span id="g1" role="cell">0</span><span id="b1" role="cell">0</span></div>
+        <div class="pop-row" role="row" style="--c: var(--carn)"><span class="sp" role="cell"><i class="dot"></i>Carnivore</span><b id="c2" role="cell">0</b><span id="g2" role="cell">0</span><span id="b2" role="cell">0</span></div>
+        <div class="pop-row" role="row" style="--c: var(--plant)"><span class="sp" role="cell"><i class="dot"></i>Plants</span><b id="cp" role="cell">0</b><span role="cell">–</span><span id="bp" role="cell">0</span></div>
+      </div>
+      <div class="spark-wrap">
+        <canvas id="spark" aria-label="Population history chart"></canvas>
+        <p class="note">Population over the last 150 s of sim time. Gen is the deepest living lineage. A species that drops below its floor is reseeded from mutated copies of its best past brains (<b id="st-reseed">0</b> so far).</p>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="label">Environment</div>
+      <div class="slider">
+        <div class="slider-top"><label for="plantRate">Plant spawn rate</label><output id="plantRate-out" for="plantRate">16 /s</output></div>
+        <input type="range" id="plantRate" min="0" max="60" step="1" value="16">
+      </div>
+      <div class="slider">
+        <div class="slider-top"><label for="drain">Energy drain</label><output id="drain-out" for="drain">1.00×</output></div>
+        <input type="range" id="drain" min="0.25" max="3" step="0.05" value="1">
+      </div>
+      <div class="slider">
+        <div class="slider-top"><label for="mutation">Mutation rate</label><output id="mutation-out" for="mutation">8% of weights</output></div>
+        <input type="range" id="mutation" min="0" max="0.5" step="0.01" value="0.08">
+      </div>
+      <div class="slider">
+        <div class="slider-top"><label for="sensor">Sensor range</label><output id="sensor-out" for="sensor">140 px</output></div>
+        <input type="range" id="sensor" min="40" max="260" step="5" value="140">
+      </div>
+    </section>
+
+    <div class="actions">
+      <button class="btn" id="reset">Reset world</button>
+      <span class="keys"><kbd>Space</kbd> pause · <kbd>1</kbd>–<kbd>5</kbd> speed</span>
+    </div>
+  </div>
+</aside>
+
+<aside class="inspector" id="inspector" aria-label="Selected creature">
+  <div class="insp-head" id="in-head">
+    <i class="dot" id="in-dot"></i><b id="in-name">Herbivore</b><span class="meta" id="in-meta">#0 · gen 0</span>
+  </div>
+  <div class="ebar" id="in-ebar"><i id="in-energy"></i></div>
+  <canvas id="brain" width="280" height="196" aria-label="Neural network of the selected creature"></canvas>
+  <div class="insp-stats">
+    <div><small>Age</small><b id="in-age">0 s</b></div>
+    <div><small>Meals</small><b id="in-meals">0</b></div>
+    <div><small>Offspring</small><b id="in-kids">0</b></div>
+  </div>
+  <div class="insp-foot" id="in-foot">Following the deepest lineage. Click any creature to inspect it.</div>
+</aside>
+
+<script src="js/utils.js" defer></script>
+<script src="js/config.js" defer></script>
+<script src="js/Vector.js" defer></script>
+<script src="js/NeuralNetwork.js" defer></script>
+<script src="js/Plant.js" defer></script>
+<script src="js/Agent.js" defer></script>
+<script src="js/SpatialGrid.js" defer></script>
+<script src="js/ParticleSystem.js" defer></script>
+<script src="js/Simulation.js" defer></script>
+<script src="js/Renderer.js" defer></script>
+<script src="js/UIController.js" defer></script>
+<script src="js/main.js" defer></script>
+</body>
+</html>

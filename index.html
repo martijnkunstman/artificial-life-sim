@@ -29,6 +29,15 @@
 
   <div class="panel-body" id="panel-body">
     <section class="block">
+      <div class="label">World</div>
+      <div class="seg seg-2" role="group" aria-label="World type">
+        <button id="mode-evolve" data-mode="evolve" aria-pressed="true">Evolving bodies</button>
+        <button id="mode-classic" data-mode="classic" aria-pressed="false">Classic species</button>
+      </div>
+      <p class="note" id="mode-note"></p>
+    </section>
+
+    <section class="block">
       <div class="label">Time scale</div>
       <div class="seg" role="group" aria-label="Simulation speed">
         <button id="sp-0" data-speed="0" aria-pressed="false">Pause</button>
@@ -46,15 +55,21 @@
         <div><small>Ticks / s</small><b id="st-tps">60</b></div>
       </div>
       <div class="pop" role="table" aria-label="Population by species">
-        <div class="pop-row head" role="row"><span role="columnheader">Species</span><span role="columnheader">Alive</span><span role="columnheader">Gen</span><span role="columnheader">Born</span></div>
-        <div class="pop-row" role="row" style="--c: var(--herb)"><span class="sp" role="cell"><i class="dot"></i>Herbivore</span><b id="c0" role="cell">0</b><span id="g0" role="cell">0</span><span id="b0" role="cell">0</span></div>
-        <div class="pop-row" role="row" style="--c: var(--omni)"><span class="sp" role="cell"><i class="dot"></i>Omnivore</span><b id="c1" role="cell">0</b><span id="g1" role="cell">0</span><span id="b1" role="cell">0</span></div>
-        <div class="pop-row" role="row" style="--c: var(--carn)"><span class="sp" role="cell"><i class="dot"></i>Carnivore</span><b id="c2" role="cell">0</b><span id="g2" role="cell">0</span><span id="b2" role="cell">0</span></div>
+        <div class="pop-row head" role="row"><span role="columnheader" id="pop-head">Diet group</span><span role="columnheader">Alive</span><span role="columnheader">Gen</span><span role="columnheader">Born</span></div>
+        <div class="pop-row" role="row" style="--c: var(--herb)"><span class="sp" role="cell"><i class="dot"></i><span id="n0">Plant-eaters</span></span><b id="c0" role="cell">0</b><span id="g0" role="cell">0</span><span id="b0" role="cell">0</span></div>
+        <div class="pop-row" role="row" style="--c: var(--omni)"><span class="sp" role="cell"><i class="dot"></i><span id="n1">Mixed diet</span></span><b id="c1" role="cell">0</b><span id="g1" role="cell">0</span><span id="b1" role="cell">0</span></div>
+        <div class="pop-row" role="row" style="--c: var(--carn)"><span class="sp" role="cell"><i class="dot"></i><span id="n2">Meat-eaters</span></span><b id="c2" role="cell">0</b><span id="g2" role="cell">0</span><span id="b2" role="cell">0</span></div>
         <div class="pop-row" role="row" style="--c: var(--plant)"><span class="sp" role="cell"><i class="dot"></i>Plants</span><b id="cp" role="cell">0</b><span role="cell">–</span><span id="bp" role="cell">0</span></div>
       </div>
       <div class="spark-wrap">
         <canvas id="spark" aria-label="Population history chart"></canvas>
-        <p class="note">Population over the last 150 s of sim time. Gen is the deepest living lineage. A species that drops below its floor is reseeded from mutated copies of its best past brains (<b id="st-reseed">0</b> so far).</p>
+        <p class="note" id="reseed-note"></p>
+      </div>
+      <div class="diet-wrap" id="diet-wrap">
+        <div class="label">Diet spread</div>
+        <canvas id="diet" aria-label="Number of living creatures by diet, from plants to meat"></canvas>
+        <div class="diet-axis" aria-hidden="true"><span>plants</span><span>mixed</span><span>meat</span></div>
+        <p class="note" id="body-avg"></p>
       </div>
     </section>
 
@@ -96,6 +111,13 @@
     <div><small>Meals</small><b id="in-meals">0</b></div>
     <div><small>Offspring</small><b id="in-kids">0</b></div>
   </div>
+  <div class="insp-stats genes" id="in-genes">
+    <div><small>Size</small><b id="gn-size">–</b></div>
+    <div><small>Speed</small><b id="gn-speed">–</b></div>
+    <div><small>Agility</small><b id="gn-turn">–</b></div>
+    <div><small>Sight</small><b id="gn-sense">–</b></div>
+    <div><small>Diet</small><b id="gn-diet">–</b></div>
+  </div>
   <div class="insp-foot" id="in-foot">Following the deepest lineage. Click any creature to inspect it.</div>
 </aside>
 
@@ -103,6 +125,7 @@
 <script src="js/config.js" defer></script>
 <script src="js/Vector.js" defer></script>
 <script src="js/NeuralNetwork.js" defer></script>
+<script src="js/Genome.js" defer></script>
 <script src="js/Plant.js" defer></script>
 <script src="js/Agent.js" defer></script>
 <script src="js/SpatialGrid.js" defer></script>

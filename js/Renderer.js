@@ -87,6 +87,11 @@ class Renderer {
 
   buildSprites() {
     this.sprites = SPECIES.map((s, k) => this.makeSprite(s.radius, this.sim.colors[k], SHAPES[k]));
+    // Evolving mode: one sprite per diet bucket, drawn at a base radius and scaled by each body's size.
+    this.dietSprites = Array.from({ length: DIET_BUCKETS }, (_, b) => {
+      const d = b / (DIET_BUCKETS - 1);
+      return this.makeSprite(DIET_SPRITE_RADIUS, dietColor(d), SHAPES[d < 1 / 3 ? 0 : d < 2 / 3 ? 1 : 2]);
+    });
     this.plantSprite = this.makeSprite(PLANT_RADIUS, this.sim.plantColor, (g, r) => { g.beginPath(); g.arc(0, 0, r, 0, TAU); });
   }
 
@@ -115,8 +120,9 @@ class Renderer {
 
     // Agents, rotated to heading, scaled slightly by energy.
     for (const a of sim.agents) {
-      const spr = this.sprites[a.kind], L = spr.size;
-      const s = (0.75 + 0.45 * a.energy / a.sp.maxEnergy) * dpr;
+      const spr = a.genome ? this.dietSprites[a.bucket] : this.sprites[a.kind], L = spr.size;
+      const body = a.genome ? a.traits.radius / DIET_SPRITE_RADIUS : 1;
+      const s = (0.75 + 0.45 * a.energy / a.traits.maxEnergy) * body * dpr;
       const c = Math.cos(a.heading) * s, sn = Math.sin(a.heading) * s;
       ctx.setTransform(c, sn, -sn, c, a.pos.x * dpr, a.pos.y * dpr);
       ctx.drawImage(spr.img, -L / 2, -L / 2, L, L);
@@ -149,7 +155,7 @@ class Renderer {
     o.setLineDash([3, 5]);
     o.strokeStyle = 'rgba(180, 215, 245, 0.18)';
     o.lineWidth = 1;
-    o.beginPath(); o.arc(x, y, sim.sensorRange, 0, TAU); o.stroke();
+    o.beginPath(); o.arc(x, y, sim.rangeOf(a), 0, TAU); o.stroke();
     o.setLineDash([]);
     const link = (t, color) => {
       if (!t || t.dead || t.eaten) return;
@@ -158,10 +164,10 @@ class Renderer {
       o.globalAlpha = 1;
     };
     link(a.seePlant, sim.plantColor);
-    link(a.seePrey, sim.colors[a.seePrey ? a.seePrey.kind : 0]);
-    link(a.seePred, sim.colors[a.seePred ? a.seePred.kind : 0]);
-    o.strokeStyle = sim.colors[a.kind];
+    if (a.seePrey) link(a.seePrey, a.seePrey.color);
+    if (a.seePred) link(a.seePred, a.seePred.color);
+    o.strokeStyle = a.color;
     o.lineWidth = 1.5;
-    o.beginPath(); o.arc(x, y, a.sp.radius * 2.6, 0, TAU); o.stroke();
+    o.beginPath(); o.arc(x, y, a.traits.radius * 2.6, 0, TAU); o.stroke();
   }
 }

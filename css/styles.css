@@ -194,3 +194,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     max-height: 56vh;
   }
 }
+
+.seg.seg-2 { grid-template-columns: repeat(2, 1fr); }
+.seg[aria-label="World type"] button { padding: 9px 4px; }
+.diet-wrap { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+#diet { width: 100%; height: 52px; display: block; }
+.diet-axis { display: flex; justify-content: space-between; font: 10px var(--mono); color: var(--muted); }
+.insp-stats.genes { grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--line); padding-top: 8px; }
+.insp-stats.genes b { font-size: 12px; }

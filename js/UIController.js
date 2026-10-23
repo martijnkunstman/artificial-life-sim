@@ -13,19 +13,55 @@ class UIController {
       pos: cssVar('--accent'), neg: cssVar('--neg'), mono: cssVar('--mono'),
     };
     this.bindSpeed();
+    this.bindMode();
     this.bindSliders();
     this.bindMisc();
     this.spark = this.setupCanvas(this.$('spark'));
+    this.diet = this.setupCanvas(this.$('diet'));
     this.brain = this.setupCanvas(this.$('brain'));
+    this.applyMode();
   }
 
   setupCanvas(el) {
+    const c = { el, ctx: el.getContext('2d'), w: 0, h: 0 };
+    this.fitCanvas(c);
+    return c;
+  }
+
+  // Charts can start inside a collapsed or hidden panel, so match the backing store to the CSS size when drawn.
+  fitCanvas(c) {
+    const w = c.el.clientWidth, h = c.el.clientHeight;
+    if (!w || !h || (w === c.w && h === c.h)) return w > 0 && h > 0;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = el.clientWidth || el.width, h = el.clientHeight || el.height;
-    el.width = Math.round(w * dpr); el.height = Math.round(h * dpr);
-    const ctx = el.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    return { el, ctx, w, h };
+    c.el.width = Math.round(w * dpr); c.el.height = Math.round(h * dpr);
+    c.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.w = w; c.h = h;
+    return true;
+  }
+
+  bindMode() {
+    this.modeButtons = [...document.querySelectorAll('[data-mode]')];
+    for (const b of this.modeButtons) {
+      b.addEventListener('click', () => {
+        if (b.dataset.mode === this.sim.mode) return;
+        this.sim.setMode(b.dataset.mode);
+        this.applyMode();
+      });
+    }
+  }
+
+  applyMode() {
+    const sim = this.sim, $ = this.$, evolving = sim.evolving;
+    for (const b of this.modeButtons) b.setAttribute('aria-pressed', String(b.dataset.mode === sim.mode));
+    const names = evolving ? DIET_GROUPS : SPECIES.map(s => s.name);
+    names.forEach((n, k) => { $('n' + k).textContent = n; });
+    $('pop-head').textContent = evolving ? 'Diet group' : 'Species';
+    $('diet-wrap').hidden = !evolving;
+    $('in-genes').hidden = !evolving;
+    $('mode-note').textContent = evolving
+      ? 'Every creature inherits body genes: size, speed, agility, sight and diet. Groups emerge from the diet gene; nothing is assigned. Switching resets the world.'
+      : 'Three fixed species with a hardcoded food chain. Only the brains evolve. Switching resets the world.';
+    this.lastStats = 0;
   }
 
   bindSpeed() {
@@ -62,7 +98,7 @@ class UIController {
 
   bindMisc() {
     const sim = this.sim;
-    this.$('reset').addEventListener('click', () => sim.reset());
+    this.$('reset').addEventListener('click', () => { sim.reset(); this.lastStats = 0; });
     const panel = this.$('panel'), btn = this.$('collapse');
     const setCollapsed = c => {
       panel.classList.toggle('collapsed', c);
@@ -101,7 +137,12 @@ class UIController {
 
   frame(now) {
     this.pickFollow();
-    if (now - this.lastStats > 200) { this.lastStats = now; this.updateStats(); this.drawSpark(); }
+    if (now - this.lastStats > 200) {
+      this.lastStats = now;
+      this.updateStats();
+      this.drawSpark();
+      if (this.sim.evolving) this.drawDiet();
+    }
     if (now - this.lastBrain > 80) { this.lastBrain = now; this.drawBrain(); }
   }
 
@@ -119,14 +160,49 @@ class UIController {
     $('mp').textContent = sim.plants.length;
     $('bp').textContent = sim.plantsSpawned.toLocaleString();
     $('st-gen').textContent = sim.maxGen;
-    $('st-reseed').textContent = sim.reseeds;
+    $('reseed-note').innerHTML = sim.evolving
+      ? `Population over the last 150 s of sim time. Gen is the deepest living lineage. If fewer than ${EVOLVE.minPop} creatures remain, the world is topped up with mutated copies of the best genomes so far (<b>${sim.reseeds}</b> so far).`
+      : `Population over the last 150 s of sim time. Gen is the deepest living lineage. A species that drops below its floor is reseeded from mutated copies of its best past brains (<b>${sim.reseeds}</b> so far).`;
     $('st-tps').textContent = sim.speed === 0 ? '0' : sim.tps.toLocaleString();
     const t = Math.floor(sim.ticks / TICKS_PER_SEC);
     const hh = Math.floor(t / 3600), mm = Math.floor(t / 60) % 60, ss = t % 60;
     $('st-time').textContent = (hh ? `${hh}:${String(mm).padStart(2, '0')}` : `${mm}`) + `:${String(ss).padStart(2, '0')}`;
   }
 
+  // Histogram of the diet gene across the living population, plus the average body.
+  drawDiet() {
+    const c = this.diet, sim = this.sim;
+    const bins = new Array(24).fill(0), sum = { size: 0, speed: 0, turn: 0, sense: 0 };
+    for (const a of sim.agents) {
+      if (!a.genome) continue;
+      bins[Math.min(bins.length - 1, Math.floor(a.diet * bins.length))]++;
+      for (const k in sum) sum[k] += a.genome.genes[k];
+    }
+    const n = sim.agents.length;
+    this.$('body-avg').textContent = n
+      ? 'Average body: ' + Object.keys(sum).map(k => `${GENE_LABELS[k].toLowerCase()} ${(sum[k] / n).toFixed(2)}`).join(' · ')
+      : '';
+    if (!this.fitCanvas(c)) return;
+    const { ctx, w, h } = c;
+    ctx.clearRect(0, 0, w, h);
+    const max = Math.max(5, ...bins), bw = w / bins.length;
+    ctx.strokeStyle = this.col.line; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, h - 0.5); ctx.lineTo(w, h - 0.5); ctx.stroke();
+    for (let i = 0; i < bins.length; i++) {
+      if (!bins[i]) continue;
+      const bh = Math.max(2, (bins[i] / max) * (h - 12));
+      ctx.fillStyle = dietColor((i + 0.5) / bins.length);
+      ctx.fillRect(i * bw + 1, h - 1 - bh, bw - 2, bh);
+    }
+    ctx.fillStyle = this.col.muted;
+    ctx.font = `10px ${this.col.mono}`;
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+    ctx.fillText(`peak ${max}`, 0, 0);
+  }
+
   drawSpark() {
+    if (!this.fitCanvas(this.spark)) return;
     const { ctx, w, h } = this.spark, sim = this.sim, hist = sim.history;
     ctx.clearRect(0, 0, w, h);
     const top = 10, bottom = h - 2, n = 300;
@@ -159,15 +235,18 @@ class UIController {
 
   drawBrain() {
     const a = this.sim.selected, $ = this.$;
+    if (!this.fitCanvas(this.brain)) return;
     const { ctx, w, h } = this.brain;
     ctx.clearRect(0, 0, w, h);
     if (!a) return;
-    const color = this.sim.colors[a.kind];
-    $('in-dot').style.setProperty('--c', color);
-    $('in-ebar').style.setProperty('--c', color);
-    $('in-name').textContent = a.sp.name;
+    $('in-dot').style.setProperty('--c', a.color);
+    $('in-ebar').style.setProperty('--c', a.color);
+    $('in-name').textContent = a.traits.name;
     $('in-meta').textContent = `#${a.id} · gen ${a.gen}`;
-    $('in-energy').style.width = `${Math.max(0, Math.min(1, a.energy / a.sp.maxEnergy)) * 100}%`;
+    $('in-energy').style.width = `${Math.max(0, Math.min(1, a.energy / a.traits.maxEnergy)) * 100}%`;
+    if (a.genome) {
+      for (const k in GENE_LABELS) $('gn-' + k).textContent = a.genome.genes[k].toFixed(2);
+    }
     $('in-age').textContent = `${Math.floor(a.age / TICKS_PER_SEC)} s`;
     $('in-meals').textContent = a.meals;
     $('in-kids').textContent = a.children;

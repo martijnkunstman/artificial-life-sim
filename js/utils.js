@@ -18,3 +18,9 @@ function wrapAngle(a) {
 }
 const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Diet 0 → 1 runs green (plants) → violet (mixed) → red (meat), matching the classic species colours.
+function dietColor(d) {
+  const h = d < 0.5 ? 145 + 117 * (d / 0.5) : 262 + 90 * ((d - 0.5) / 0.5);
+  return `hsl(${h.toFixed(0)}, 100%, 67%)`;
+}

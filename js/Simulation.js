@@ -5,6 +5,7 @@ class Simulation {
   constructor() {
     this.W = Math.max(320, window.innerWidth);
     this.H = Math.max(320, window.innerHeight);
+    this.mode = MODE_EVOLVE;
     this.plantRate = 16;
     this.drainMult = 1;
     this.mutationRate = 0.08;
@@ -22,6 +23,13 @@ class Simulation {
     this.tpsCount = 0;
     this.tpsTime = this.last;
     this.tps = 0;
+    this.reset();
+  }
+
+  get evolving() { return this.mode === MODE_EVOLVE; }
+
+  setMode(mode) {
+    this.mode = mode;
     this.reset();
   }
 
@@ -45,8 +53,14 @@ class Simulation {
       vx: rand(-0.25, 0.25), vy: rand(-0.25, 0.25),
     }));
     this.resizeGrids();
-    for (let k = 0; k < SPECIES.length; k++) {
-      for (let i = 0; i < SPECIES[k].initial; i++) this.spawnAgent(k, null, 0);
+    if (this.evolving) {
+      EVOLVE.founders.forEach((n, k) => {
+        for (let i = 0; i < n; i++) this.spawnAgent(k, null, 0, Genome.founder(k));
+      });
+    } else {
+      for (let k = 0; k < SPECIES.length; k++) {
+        for (let i = 0; i < SPECIES[k].initial; i++) this.spawnAgent(k, null, 0);
+      }
     }
     for (let i = 0; i < 240; i++) this.spawnPlant();
     if (this.renderer) this.renderer.clear();
@@ -62,17 +76,21 @@ class Simulation {
 
   setSensorRange(r) { this.sensorRange = r; this.resizeGrids(); }
 
+  rangeOf(a) { return this.sensorRange * a.traits.sense; }
+
   resizeGrids() {
-    // Cell size == sensor range, so any neighbour in range is inside the 3x3 block around an agent.
-    const cell = Math.max(40, this.sensorRange);
+    // Cell size == the longest possible sight, so any neighbour in range is inside the 3x3 block around an agent.
+    const reach = this.evolving ? GENE_RANGES.sense[1] : 1;
+    const cell = Math.max(40, this.sensorRange * reach);
     this.agentGrid.resize(this.W, this.H, cell);
     this.plantGrid.resize(this.W, this.H, cell);
   }
 
-  spawnAgent(kind, brain, gen, x = rand(20, this.W - 20), y = rand(20, this.H - 20)) {
-    const a = new Agent(kind, x, y, brain, gen);
+  spawnAgent(kind, brain, gen, genome = null, x = rand(20, this.W - 20), y = rand(20, this.H - 20)) {
+    const a = new Agent(kind, x, y, brain, gen, genome);
+    a.color = genome ? dietColor(a.diet) : this.colors[a.kind];
     this.agents.push(a);
-    this.counts[kind]++;
+    this.counts[a.kind]++;
     if (gen > this.maxGen) this.maxGen = gen;
     return a;
   }
@@ -104,21 +122,30 @@ class Simulation {
     return d >= r ? 0 : 1 - d / r;
   }
 
+  // Classic: a fixed food chain. Evolving: a hunter needs some meat digestion, a clearly more
+  // meat-leaning diet than its prey, and a body not much smaller than the prey's.
+  canEat(a, b) {
+    if (!this.evolving) return (PREY[a.kind] & (1 << b.kind)) !== 0;
+    return a.traits.meatEff >= EVOLVE.minMeatEff
+      && b.diet < a.diet - EVOLVE.dietGap
+      && b.traits.radius <= a.traits.radius * EVOLVE.sizeRatio;
+  }
+
   // Nearest plant, predator and prey within sensor range, scanning only the 3x3 neighbouring cells.
   sense(a) {
-    const r2 = this.sensorRange * this.sensorRange;
+    const range = this.rangeOf(a), r2 = range * range;
     const x = a.pos.x, y = a.pos.y;
-    const predMask = PREDATORS[a.kind], preyMask = PREY[a.kind], anyMask = predMask | preyMask;
-    const eatsPlants = a.sp.plantGain > 0;
+    const eatsPlants = a.traits.plantGain > 0;
     const g = this.agentGrid, pg = this.plantGrid;
     const agents = g.items, ahead = g.head, anext = g.next;
     const plants = pg.items, phead = pg.head, pnext = pg.next;
+    const span = Math.ceil(range / g.cell);
     const cx = clamp(Math.floor(x / g.cell), 0, g.cols - 1);
     const cy = clamp(Math.floor(y / g.cell), 0, g.rows - 1);
     let bp = null, bpd = r2, bd = null, bdd = r2, by = null, byd = r2;
 
-    for (let gy = Math.max(0, cy - 1); gy <= Math.min(g.rows - 1, cy + 1); gy++) {
-      for (let gx = Math.max(0, cx - 1); gx <= Math.min(g.cols - 1, cx + 1); gx++) {
+    for (let gy = Math.max(0, cy - span); gy <= Math.min(g.rows - 1, cy + span); gy++) {
+      for (let gx = Math.max(0, cx - span); gx <= Math.min(g.cols - 1, cx + span); gx++) {
         const c = gy * g.cols + gx;
         if (eatsPlants) {
           for (let i = phead[c]; i !== -1; i = pnext[i]) {
@@ -128,16 +155,13 @@ class Simulation {
             if (d2 < bpd) { bpd = d2; bp = p; }
           }
         }
-        if (anyMask) {
-          for (let i = ahead[c]; i !== -1; i = anext[i]) {
-            const o = agents[i];
-            if (o === a || o.dead) continue;
-            const bit = 1 << o.kind;
-            if (!(bit & anyMask)) continue;
-            const dx = o.pos.x - x, dy = o.pos.y - y, d2 = dx * dx + dy * dy;
-            if (bit & predMask) { if (d2 < bdd) { bdd = d2; bd = o; } }
-            else if (d2 < byd) { byd = d2; by = o; }
-          }
+        for (let i = ahead[c]; i !== -1; i = anext[i]) {
+          const o = agents[i];
+          if (o === a || o.dead) continue;
+          const dx = o.pos.x - x, dy = o.pos.y - y, d2 = dx * dx + dy * dy;
+          if (d2 >= bdd && d2 >= byd) continue;
+          if (d2 < bdd && this.canEat(o, a)) { bdd = d2; bd = o; }
+          else if (d2 < byd && this.canEat(a, o)) { byd = d2; by = o; }
         }
       }
     }
@@ -147,22 +171,25 @@ class Simulation {
   }
 
   interact(a) {
-    const sp = a.sp;
+    const t = a.traits;
     const p = a.seePlant;
     if (p && !p.eaten) {
-      const rr = sp.radius + PLANT_RADIUS + 1;
+      const rr = t.radius + PLANT_RADIUS + 1;
       if (a.pos.distSq(p.pos) < rr * rr) {
         p.eaten = true;
-        a.gain(sp.plantGain);
+        a.gain(t.plantGain);
         this.particles.burst(p.pos.x, p.pos.y, this.plantColor, 6, 1.6, 22, 1.4);
       }
     }
     const q = a.seePrey;
     if (q && !q.dead && a.digest === 0) {
-      const rr = sp.radius + q.sp.radius;
+      const rr = t.radius + q.traits.radius;
       if (a.pos.distSq(q.pos) < rr * rr) {
-        a.gain(sp.preyGain + Math.max(0, q.energy) * 0.15);
-        a.digest = sp.digest;
+        const leftover = Math.max(0, q.energy);
+        a.gain(this.evolving
+          ? t.meatEff * (q.traits.bodyValue + leftover * 0.2)
+          : t.preyGain + leftover * 0.15);
+        a.digest = t.digest;
         this.kill(q, true);
       }
     }
@@ -173,48 +200,53 @@ class Simulation {
     a.dead = true;
     this.counts[a.kind]--;
     this.recordFame(a);
-    const c = this.colors[a.kind];
-    if (eaten) this.particles.burst(a.pos.x, a.pos.y, c, 22, 3.4, 34, 2);
-    else this.particles.burst(a.pos.x, a.pos.y, c, 10, 0.9, 50, 1.4);
+    if (eaten) this.particles.burst(a.pos.x, a.pos.y, a.color, 22, 3.4, 34, 2);
+    else this.particles.burst(a.pos.x, a.pos.y, a.color, 10, 0.9, 50, 1.4);
   }
 
-  // Hall of fame: the best brains each species ever produced, used only to reseed near-extinct species.
+  // Hall of fame: the best genomes and brains ever produced, used only to top up a collapsing population.
   recordFame(a) {
     if (a.age < 240) return;
     const list = this.fame[a.kind], f = a.fitness;
     if (list.length >= 12 && f <= list[list.length - 1].fitness) return;
-    list.push({ fitness: f, brain: a.brain, gen: a.gen });
+    list.push({ fitness: f, brain: a.brain, genome: a.genome, gen: a.gen });
     list.sort((m, n) => n.fitness - m.fitness);
     if (list.length > 12) list.length = 12;
   }
 
   reproduce(a) {
-    const sp = a.sp;
-    if (this.counts[a.kind] >= sp.cap || this.agents.length >= AGENT_CAP) return;
-    a.energy -= sp.reproCost;
+    const t = a.traits;
+    const full = this.evolving ? this.agents.length >= EVOLVE.cap
+      : this.counts[a.kind] >= t.cap || this.agents.length >= AGENT_CAP;
+    if (full) return;
+    a.energy -= t.reproCost;
     a.children++;
     const brain = a.brain.clone().mutate(this.mutationRate);
+    const genome = a.genome ? a.genome.clone().mutate(this.mutationRate * EVOLVE.bodyMutation) : null;
     const back = a.heading + Math.PI;
-    const child = this.spawnAgent(a.kind, brain, a.gen + 1,
-      clamp(a.pos.x + Math.cos(back) * sp.radius * 2, 5, this.W - 5),
-      clamp(a.pos.y + Math.sin(back) * sp.radius * 2, 5, this.H - 5));
-    child.energy = sp.childEnergy;
+    const child = this.spawnAgent(a.kind, brain, a.gen + 1, genome,
+      clamp(a.pos.x + Math.cos(back) * t.radius * 2, 5, this.W - 5),
+      clamp(a.pos.y + Math.sin(back) * t.radius * 2, 5, this.H - 5));
+    child.energy = Math.min(child.traits.childEnergy, t.childEnergy);
     child.heading = wrapAngle(a.heading + rand(-1.2, 1.2));
-    this.births[a.kind]++;
-    this.particles.burst(child.pos.x, child.pos.y, this.colors[a.kind], 8, 1.2, 26, 1.2);
+    this.births[child.kind]++;
+    this.particles.burst(child.pos.x, child.pos.y, child.color, 8, 1.2, 26, 1.2);
   }
 
+  // kind -1 (evolving mode only) draws from the best genomes of every diet group.
   reseed(kind) {
-    const list = this.fame[kind];
+    const list = kind < 0 ? this.fame.flat() : this.fame[kind];
     let brain = null, gen = 0;
+    let genome = this.evolving ? (kind < 0 ? Genome.random() : Genome.founder(kind)) : null;
     if (list.length) {
       const e = list[(Math.random() * list.length) | 0];
       brain = e.brain.clone().mutate(Math.max(this.mutationRate, 0.05));
+      if (e.genome) genome = e.genome.clone().mutate(0.2);
       gen = e.gen + 1;
     }
-    const a = this.spawnAgent(kind, brain, gen);
+    const a = this.spawnAgent(Math.max(0, kind), brain, gen, genome);
     this.reseeds++;
-    this.particles.burst(a.pos.x, a.pos.y, this.colors[kind], 12, 1.5, 40, 1.4);
+    this.particles.burst(a.pos.x, a.pos.y, a.color, 12, 1.5, 40, 1.4);
   }
 
   driftZones() {
@@ -244,7 +276,7 @@ class Simulation {
       a.move(this);
       this.interact(a);
       if (a.energy <= 0 || a.age > a.maxAge) this.kill(a, false);
-      else if (a.energy >= a.sp.reproEnergy) this.reproduce(a);
+      else if (a.energy >= a.traits.reproEnergy) this.reproduce(a);
     }
 
     let w = 0;
@@ -256,9 +288,11 @@ class Simulation {
     plants.length = w;
 
     if (this.ticks % 45 === 0) {
-      for (let k = 0; k < SPECIES.length; k++) {
-        if (this.counts[k] < SPECIES[k].minPop) this.reseed(k);
+      for (let k = 0; k < 3; k++) {
+        const floor = this.evolving ? EVOLVE.groupFloor : SPECIES[k].minPop;
+        if (this.counts[k] < floor) this.reseed(k);
       }
+      if (this.evolving && agents.length < EVOLVE.minPop) this.reseed(-1);
     }
     if (this.ticks % 30 === 0) {
       const h = this.history;

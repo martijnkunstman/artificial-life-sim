@@ -200,6 +200,8 @@ Meat-eaters now sustain themselves more strongly than before parts (births outnu
 node tools/headless.js --seeds 8 --minutes 20
 ```
 
+**Species.** Tracking species changes nothing about how a world plays out, so the numbers above still hold. In the same 8 runs, each world ended with 5 to 12 living species (7.8 on average). Of those, 2.5 had at least 5 members, and the largest averaged 44 members. About 270 species were founded per 20-minute run, most of them newborns or top-ups that died before breeding. The threshold of 1.5 was picked over 1, which split off about twice as many species with no clearer tree, and over 2, which lumped together lineages that had visibly drifted apart.
+
 ## Earlier version
 
 Before evolving bodies, the simulation had three fixed species (herbivore, omnivore, carnivore) with a hardcoded food chain where only the brains evolved. That version is kept under the git tag `classic-species`:

@@ -153,6 +153,14 @@
   <header class="tree-head">
     <b>Family tree</b>
     <label class="check" for="tree-extinct"><input type="checkbox" id="tree-extinct" checked> Extinct branches</label>
+    <label class="check" for="tree-levels">Ancestors
+      <select id="tree-levels" title="How many generations of ancestors to show above each species">
+        <option value="1">1</option>
+        <option value="3" selected>3</option>
+        <option value="6">6</option>
+        <option value="all">All</option>
+      </select>
+    </label>
     <button class="icon-btn" id="tree-close" title="Close family tree" aria-label="Close family tree">×</button>
   </header>
   <div class="tree-scroll" id="tree-scroll"><canvas id="tree" aria-label="Family tree: one line per species from when it was founded to when it died out, joined to the species it branched from"></canvas></div>

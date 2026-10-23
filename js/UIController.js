@@ -132,7 +132,7 @@ class UIController {
     if (window.innerWidth <= 720) setCollapsed(true);
 
     window.addEventListener('keydown', e => {
-      if (e.target instanceof HTMLInputElement || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.ctrlKey || e.metaKey || e.altKey) return;
       if (this.view.key(e)) return;
       const map = { '1': 0, '2': 1, '3': 2, '4': 5, '5': 'max' };
       if (e.code === 'Space') { e.preventDefault(); this.setSpeed(sim.speed === 0 ? this.resumeSpeed : 0); }

@@ -100,18 +100,22 @@ class SpeciesRegistry {
 
   // Depth-first order of the tree: each species, then the species branching off it, newest branch
   // first. Drawn as rows, that order lets every branch line drop down without crossing another.
-  // keep(s) decides which species to include; ancestors of included species are always included.
-  order(keep = () => true) {
+  // keep(s) decides which species to include; up to `levels` generations of their ancestors are
+  // included too, as long as ancestorOk(ancestor) allows. A species whose parent is left out is
+  // drawn as a root.
+  order(keep = () => true, levels = Infinity, ancestorOk = () => true) {
     const shown = new Set();
     for (const s of this.list) {
       if (!keep(s)) continue;
-      for (let t = s; t && !shown.has(t); t = this.get(t.parent)) shown.add(t);
+      shown.add(s);
+      let t = this.get(s.parent);
+      for (let up = 1; t && up <= levels && ancestorOk(t); up++, t = this.get(t.parent)) shown.add(t);
     }
     const kids = new Map(), roots = [];
     for (const s of this.list) {
       if (!shown.has(s)) continue;
       const p = this.get(s.parent);
-      if (p) { if (!kids.has(p)) kids.set(p, []); kids.get(p).push(s); } else roots.push(s);
+      if (p && shown.has(p)) { if (!kids.has(p)) kids.set(p, []); kids.get(p).push(s); } else roots.push(s);
     }
     const out = [];
     const visit = s => {

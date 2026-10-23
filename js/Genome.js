@@ -6,7 +6,7 @@ class Genome {
     this.genes = genes;
   }
 
-  static random(diet = Math.random()) {
+  static random(diet = rng.next()) {
     return new Genome({
       size: rand(0.8, 1.25),
       speed: rand(0.8, 1.2),
@@ -25,9 +25,17 @@ class Genome {
     return new Genome({ ...this.genes });
   }
 
+  toJSON() {
+    return this.genes;
+  }
+
+  static fromJSON(genes) {
+    return new Genome({ ...genes });
+  }
+
   mutate(rate, step = EVOLVE.bodyStep) {
     for (const key in this.genes) {
-      if (Math.random() >= rate) continue;
+      if (!chance(rate)) continue;
       const [lo, hi] = GENE_RANGES[key];
       this.genes[key] = clamp(this.genes[key] + gauss() * step * (hi - lo), lo, hi);
     }
@@ -43,30 +51,34 @@ class Genome {
   // sharper senses and stronger muscles raise upkeep, and diet trades plant against meat digestion.
   express() {
     const { size: s, speed: v, turn: t, sense: r, diet: d } = this.genes;
-    const plantEff = 1 - d, meatEff = d;
+    const B = BODY;
+    const plantEff = Math.pow(1 - d, B.dietCurve), meatEff = Math.pow(d, B.dietCurve);
     const maxEnergy = 110 * Math.pow(s, 1.5);
-    const childEnergy = 0.4 * maxEnergy;
+    // Hunters raise fewer, better-provisioned young: a newborn hunter needs time to make its first kill.
+    const childEnergy = (0.4 + B.hunterProvision * d) * maxEnergy;
     return {
       name: DIET_GROUPS[this.kind],
       radius: 6 * s,
-      maxSpeed: 2.2 * v / Math.pow(s, 0.25),
-      accel: 0.14 * v,
+      // A meat diet brings a hunter's burst of speed; without it a chaser never gains on fleeing prey.
+      maxSpeed: 2.2 * v / Math.pow(s, 0.25) * (1 + B.hunterSpeed * d),
+      accel: 0.14 * v * (1 + B.hunterSpeed * d),
       maxTurn: 0.15 * t / Math.sqrt(s),
       sense: r,
       maxEnergy,
-      startEnergy: 0.6 * maxEnergy,
-      reproEnergy: 0.85 * maxEnergy,
+      startEnergy: Math.max(0.6 * maxEnergy, childEnergy),
+      // Breed only with enough left over to survive the cost (0.85 of max for a plant-eater).
+      reproEnergy: Math.min(0.98 * maxEnergy, childEnergy + 0.45 * maxEnergy),
       childEnergy,
       reproCost: childEnergy + 0.12 * maxEnergy,
       // A meat diet carries a hunter's metabolism on top of the body's upkeep.
-      baseDrain: 0.022 * Math.pow(s, 1.5) + 0.012 * r * r + 0.01 * v * v * s + 0.006 * t * t + 0.03 * d,
+      baseDrain: 0.022 * Math.pow(s, 1.5) + 0.012 * r * r + 0.01 * v * v * s + 0.006 * t * t + B.meatUpkeep * d,
       moveDrain: 0.011 * s,
       plantEff,
       meatEff,
-      plantGain: plantEff > 0.05 ? 22 * plantEff : 0,
-      digest: 150,
+      plantGain: plantEff > 0.05 ? B.plantValue * plantEff : 0,
+      digest: B.digest,
       maxAge: 4800 * (0.8 + 0.3 * s),
-      bodyValue: 40 * Math.pow(s, 1.5),
+      bodyValue: B.bodyValue * Math.pow(s, 1.5),
     };
   }
 }

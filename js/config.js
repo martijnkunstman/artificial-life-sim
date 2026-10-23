@@ -11,6 +11,20 @@ const GENE_RANGES = {
 };
 const GENE_LABELS = { size: 'Size', speed: 'Speed', turn: 'Agility', sense: 'Sight', diet: 'Diet' };
 
+/* ---------- energy economy (tune with tools/headless.js --set BODY.key=value) ---------- */
+const BODY = {
+  // Defaults were chosen with the headless runner; see "Balance" in the README for the numbers.
+  plantValue: 22,  // energy in one plant, at full plant digestion
+  bodyValue: 65,   // energy in a prey body of size 1, at full meat digestion (scales with size^1.5)
+  leftover: 0.2,   // share of the prey's remaining energy a hunter also gets
+  meatUpkeep: 0.01, // extra drain per tick at diet 1 (a hunter's metabolism)
+  digest: 100,     // ticks after a kill before a hunter can eat prey again
+  dietCurve: 1.2,  // digestion efficiency = diet^curve; below 1 favours mixed diets, above 1 specialists
+  biteReach: 1,    // contact distance multiplier for a kill
+  hunterSpeed: 0.3, // extra top speed and acceleration at diet 1, as a fraction
+  hunterProvision: 0.25, // extra share of max energy given to each newborn at diet 1 (parent pays it)
+};
+
 /* ---------- evolution and population rules ---------- */
 const EVOLVE = {
   founders: [50, 22, 18], // starting creatures per diet group
@@ -21,7 +35,7 @@ const EVOLVE = {
   bodyStep: 0.07,    // mutation step as a fraction of each gene's range
   minMeatEff: 0.15,  // below this meat efficiency a creature cannot hunt at all
   dietGap: 0.1,      // prey must be at least this much more plant-leaning than the hunter
-  sizeRatio: 1.15,   // prey may be at most this much bigger than the hunter
+  sizeRatio: 1.4,    // prey may be at most this much bigger than the hunter
 };
 
 /* ---------- diet groups (for display and founders only; the rules never look at them) ---------- */
@@ -32,8 +46,18 @@ const DIET_BUCKETS = 12;
 const DIET_SPRITE_RADIUS = 6;
 
 /* ---------- brain and world ---------- */
-const INPUT_LABELS = ['plant ∠', 'plant ●', 'threat ∠', 'threat ●', 'prey ∠', 'prey ●', 'wall ahead', 'wall left', 'wall right', 'energy', 'speed'];
+const INPUT_LABELS = [
+  'plant ∠', 'plant ●',
+  'threat ∠', 'threat ●', 'threat size',
+  'prey ∠', 'prey ●', 'prey size',
+  'wall ahead', 'wall left', 'wall right',
+  'energy', 'digesting', 'speed',
+];
 const OUTPUT_LABELS = ['turn L', 'turn R', 'accel', 'brake'];
 const BRAIN_SHAPE = [INPUT_LABELS.length, 12, OUTPUT_LABELS.length];
 const PLANT_RADIUS = 2.6;
 const PLANT_CAP = 900;
+
+/* ---------- saved worlds ---------- */
+const SAVE_FORMAT = 'neural-tidepool-world';
+const SAVE_VERSION = 1;

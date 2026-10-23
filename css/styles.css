@@ -200,3 +200,17 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .diet-axis { display: flex; justify-content: space-between; font: 10px var(--mono); color: var(--muted); }
 .insp-stats.genes { grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--line); padding-top: 8px; }
 .insp-stats.genes b { font-size: 12px; }
+
+.seed-row { display: flex; align-items: center; gap: 8px; margin: 0; }
+.seed-row label { font-size: 12.5px; color: var(--ink); }
+.seed-row input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(140, 182, 224, 0.06);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  font: 500 12px var(--mono);
+  padding: 7px 9px;
+}
+.actions .btn { flex: 1; }

@@ -45,11 +45,26 @@ class NeuralNetwork {
     return nn;
   }
 
+  toJSON() {
+    return {
+      sizes: this.sizes,
+      weights: this.weights.map(w => Array.from(w)),
+      biases: this.biases.map(b => Array.from(b)),
+    };
+  }
+
+  static fromJSON(d) {
+    const nn = new NeuralNetwork(d.sizes, true);
+    d.weights.forEach((w, l) => nn.weights[l].set(w));
+    d.biases.forEach((b, l) => nn.biases[l].set(b));
+    return nn;
+  }
+
   mutate(rate, strength = 0.35) {
     const jitter = arr => {
       for (let i = 0; i < arr.length; i++) {
-        if (Math.random() >= rate) continue;
-        arr[i] = Math.random() < 0.06 ? gauss() : clamp(arr[i] + gauss() * strength, -4, 4);
+        if (!chance(rate)) continue;
+        arr[i] = chance(0.06) ? gauss() : clamp(arr[i] + gauss() * strength, -4, 4);
       }
     };
     this.weights.forEach(jitter);

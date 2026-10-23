@@ -2,9 +2,11 @@
 
 /* ---------- Simulation: world state, rules, fixed-step loop ---------- */
 class Simulation {
-  constructor() {
-    this.W = Math.max(320, window.innerWidth);
-    this.H = Math.max(320, window.innerHeight);
+  // Nothing here touches the DOM, so the same class runs headless in Node (see tools/headless.js).
+  // particles is optional: without it the world runs identically, just without visual effects.
+  constructor({ width = 1280, height = 800, seed = Random.newSeed(), particles = null, plantColor = '#e8dc74' } = {}) {
+    this.W = width;
+    this.H = height;
     this.plantRate = 16;
     this.drainMult = 1;
     this.mutationRate = 0.08;
@@ -12,9 +14,8 @@ class Simulation {
     this.speed = 1;
     this.agentGrid = new SpatialGrid();
     this.plantGrid = new SpatialGrid();
-    this.particles = new ParticleSystem(2400);
-    this.groupColors = GROUP_COLOR_VARS.map(cssVar);
-    this.plantColor = cssVar('--plant');
+    this.particles = particles;
+    this.plantColor = plantColor;
     this.renderer = null;
     this.ui = null;
     this.acc = 0;
@@ -22,10 +23,14 @@ class Simulation {
     this.tpsCount = 0;
     this.tpsTime = this.last;
     this.tps = 0;
-    this.reset();
+    this.reset(seed);
   }
 
-  reset() {
+  // The same seed, world size and settings replay the same world tick for tick.
+  reset(seed = Random.newSeed()) {
+    this.seed = seed >>> 0;
+    rng.seed(this.seed);
+    Agent.nextId = 1;
     this.ticks = 0;
     this.agents = [];
     this.plants = [];
@@ -35,11 +40,12 @@ class Simulation {
     this.fame = [[], [], []];
     this.maxGen = 0;
     this.reseeds = 0;
+    this.topUps = [0, 0, 0];
     this.history = [[], [], [], []];
     this.plantAcc = 0;
     this.selected = null;
     this.pinned = false;
-    this.particles.clear();
+    if (this.particles) this.particles.clear();
     this.zones = Array.from({ length: 3 }, () => ({
       x: rand(0.2, 0.8) * this.W, y: rand(0.2, 0.8) * this.H,
       vx: rand(-0.25, 0.25), vy: rand(-0.25, 0.25),
@@ -49,6 +55,57 @@ class Simulation {
       for (let i = 0; i < n; i++) this.spawnAgent(Genome.founder(k), null, 0);
     });
     for (let i = 0; i < 240; i++) this.spawnPlant();
+    if (this.renderer) this.renderer.clear();
+  }
+
+  // A complete snapshot: world, statistics, best-genome archive and the random generator's position,
+  // so a loaded world continues exactly where it was saved (when the window is the same size).
+  serialize() {
+    return {
+      format: SAVE_FORMAT, version: SAVE_VERSION,
+      seed: this.seed, rngState: rng.state, ticks: this.ticks,
+      width: this.W, height: this.H,
+      settings: { plantRate: this.plantRate, drainMult: this.drainMult, mutationRate: this.mutationRate, sensorRange: this.sensorRange },
+      agents: this.agents,
+      plants: this.plants.map(p => [p.pos.x, p.pos.y, p.born]),
+      zones: this.zones, plantAcc: this.plantAcc,
+      births: this.births, plantsSpawned: this.plantsSpawned, maxGen: this.maxGen,
+      reseeds: this.reseeds, topUps: this.topUps, history: this.history,
+      fame: this.fame.map(list => list.map(e => ({ fitness: e.fitness, gen: e.gen, genome: e.genome, brain: e.brain }))),
+    };
+  }
+
+  load(d) {
+    if (!d || d.format !== SAVE_FORMAT) throw new Error('That file is not a saved Neural Tidepool world.');
+    if (d.version !== SAVE_VERSION) throw new Error(`That world was saved by a different version (format ${d.version}, this page reads ${SAVE_VERSION}).`);
+    const inputs = d.agents[0] && d.agents[0].brain.sizes[0];
+    if (inputs && inputs !== BRAIN_SHAPE[0]) throw new Error(`That world's brains have ${inputs} inputs; this version uses ${BRAIN_SHAPE[0]}.`);
+
+    Object.assign(this, d.settings);
+    this.seed = d.seed;
+    this.ticks = d.ticks;
+    this.agents = d.agents.map(Agent.fromJSON);
+    this.plants = d.plants.map(([x, y, born]) => new Plant(x, y, born));
+    this.zones = d.zones;
+    this.plantAcc = d.plantAcc;
+    this.births = d.births;
+    this.plantsSpawned = d.plantsSpawned;
+    this.maxGen = d.maxGen;
+    this.reseeds = d.reseeds;
+    this.topUps = d.topUps;
+    this.history = d.history;
+    this.fame = d.fame.map(list => list.map(e => ({
+      fitness: e.fitness, gen: e.gen, genome: Genome.fromJSON(e.genome), brain: NeuralNetwork.fromJSON(e.brain),
+    })));
+    this.counts = [0, 0, 0];
+    for (const a of this.agents) this.counts[a.kind]++;
+    Agent.nextId = this.agents.reduce((m, a) => Math.max(m, a.id), 0) + 1;
+    this.selected = null;
+    this.pinned = false;
+    if (this.particles) this.particles.clear();
+    // Restore the generator last: rebuilding the agents above drew from it.
+    rng.state = d.rngState >>> 0;
+    this.resize(this.W, this.H);
     if (this.renderer) this.renderer.clear();
   }
 
@@ -65,7 +122,8 @@ class Simulation {
   rangeOf(a) { return this.sensorRange * a.traits.sense; }
 
   resizeGrids() {
-    // Cell size == the longest possible sight, so any neighbour in range is inside the 3x3 block around an agent.
+    // Cell size == the longest possible sight, so sense() only scans the 3x3 block around a creature.
+    // (Measured: smaller cells with a wider block were slower, because the extra cells cost more than they skip.)
     const cell = Math.max(40, this.sensorRange * GENE_RANGES.sense[1]);
     this.agentGrid.resize(this.W, this.H, cell);
     this.plantGrid.resize(this.W, this.H, cell);
@@ -82,15 +140,15 @@ class Simulation {
   spawnPlant() {
     if (this.plants.length >= PLANT_CAP) return;
     let x, y;
-    if (Math.random() < 0.65) {
+    if (chance(0.65)) {
       // Fertile currents: most growth clusters around slowly drifting zones.
-      const z = this.zones[(Math.random() * this.zones.length) | 0];
+      const z = pick(this.zones);
       const spread = 60 + 0.12 * Math.min(this.W, this.H);
       x = z.x + gauss() * spread;
       y = z.y + gauss() * spread;
     } else {
-      x = Math.random() * this.W;
-      y = Math.random() * this.H;
+      x = rand(0, this.W);
+      y = rand(0, this.H);
     }
     x = clamp(x, 6, this.W - 6);
     y = clamp(y, 6, this.H - 6);
@@ -114,7 +172,7 @@ class Simulation {
       && b.traits.radius <= a.traits.radius * EVOLVE.sizeRatio;
   }
 
-  // Nearest plant, predator and prey within sensor range, scanning only the 3x3 neighbouring cells.
+  // Nearest plant, predator and prey within sensor range, scanning only the grid cells that sight can reach (3x3).
   sense(a) {
     const range = this.rangeOf(a), r2 = range * range;
     const x = a.pos.x, y = a.pos.y;
@@ -161,19 +219,23 @@ class Simulation {
       if (a.pos.distSq(p.pos) < rr * rr) {
         p.eaten = true;
         a.gain(t.plantGain);
-        this.particles.burst(p.pos.x, p.pos.y, this.plantColor, 6, 1.6, 22, 1.4);
+        this.fx(p.pos.x, p.pos.y, this.plantColor, 6, 1.6, 22, 1.4);
       }
     }
     const q = a.seePrey;
     if (q && !q.dead && a.digest === 0) {
-      const rr = t.radius + q.traits.radius;
+      const rr = (t.radius + q.traits.radius) * BODY.biteReach;
       if (a.pos.distSq(q.pos) < rr * rr) {
         const leftover = Math.max(0, q.energy);
-        a.gain(t.meatEff * (q.traits.bodyValue + leftover * 0.2));
+        a.gain(t.meatEff * (q.traits.bodyValue + leftover * BODY.leftover));
         a.digest = t.digest;
         this.kill(q, true);
       }
     }
+  }
+
+  fx(x, y, color, n, speed, life, size) {
+    if (this.particles) this.particles.burst(x, y, color, n, speed, life, size);
   }
 
   kill(a, eaten) {
@@ -181,8 +243,8 @@ class Simulation {
     a.dead = true;
     this.counts[a.kind]--;
     this.recordFame(a);
-    if (eaten) this.particles.burst(a.pos.x, a.pos.y, a.color, 22, 3.4, 34, 2);
-    else this.particles.burst(a.pos.x, a.pos.y, a.color, 10, 0.9, 50, 1.4);
+    if (eaten) this.fx(a.pos.x, a.pos.y, a.color, 22, 3.4, 34, 2);
+    else this.fx(a.pos.x, a.pos.y, a.color, 10, 0.9, 50, 1.4);
   }
 
   // Hall of fame: the best genomes and brains ever produced, used only to top up a collapsing population.
@@ -209,7 +271,7 @@ class Simulation {
     child.energy = Math.min(child.traits.childEnergy, t.childEnergy);
     child.heading = wrapAngle(a.heading + rand(-1.2, 1.2));
     this.births[child.kind]++;
-    this.particles.burst(child.pos.x, child.pos.y, child.color, 8, 1.2, 26, 1.2);
+    this.fx(child.pos.x, child.pos.y, child.color, 8, 1.2, 26, 1.2);
   }
 
   // Tops up one diet group from its best genomes; kind -1 draws from the best of every group.
@@ -218,14 +280,15 @@ class Simulation {
     let brain = null, gen = 0;
     let genome = kind < 0 ? Genome.random() : Genome.founder(kind);
     if (list.length) {
-      const e = list[(Math.random() * list.length) | 0];
+      const e = pick(list);
       brain = e.brain.clone().mutate(Math.max(this.mutationRate, 0.05));
       genome = e.genome.clone().mutate(0.2);
       gen = e.gen + 1;
     }
     const a = this.spawnAgent(genome, brain, gen);
     this.reseeds++;
-    this.particles.burst(a.pos.x, a.pos.y, a.color, 12, 1.5, 40, 1.4);
+    this.topUps[a.kind]++;
+    this.fx(a.pos.x, a.pos.y, a.color, 12, 1.5, 40, 1.4);
   }
 
   driftZones() {
@@ -304,7 +367,7 @@ class Simulation {
         this.tpsCount = 0;
         this.tpsTime = now;
       }
-      this.particles.update();
+      if (this.particles) this.particles.update();
       this.renderer.draw();
       this.ui.frame(now);
       requestAnimationFrame(frame);

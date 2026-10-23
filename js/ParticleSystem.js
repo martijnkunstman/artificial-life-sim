@@ -1,6 +1,6 @@
 'use strict';
 
-/* ---------- particles: fixed pool, swap-remove ---------- */
+/* ---------- particles: fixed pool, swap-remove; visual only, so it uses Math.random and never touches the seeded stream ---------- */
 class ParticleSystem {
   constructor(max) {
     this.max = max;

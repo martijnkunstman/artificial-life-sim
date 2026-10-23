@@ -1,0 +1,143 @@
+#!/usr/bin/env node
+'use strict';
+
+/*
+ * Headless balance runner: runs the real simulation classes in Node, without drawing,
+ * over many seeds, and reports how each diet group fares.
+ *
+ *   node tools/headless.js                      10 seeds x 10 sim-minutes
+ *   node tools/headless.js --seeds 20 --minutes 15
+ *   node tools/headless.js --set plantRate=20 --set EVOLVE.dietGap=0.15
+ *   node tools/headless.js --json > results.json
+ */
+
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+// The browser loads these as classic scripts in this order; Renderer, UIController and main stay out.
+const SIM_FILES = [
+  'Random.js', 'utils.js', 'config.js', 'Vector.js', 'NeuralNetwork.js', 'Genome.js',
+  'Plant.js', 'Agent.js', 'SpatialGrid.js', 'ParticleSystem.js', 'Simulation.js',
+];
+const GROUPS = ['plant', 'mixed', 'meat'];
+const SAMPLE_EVERY = 300; // ticks (5 s of sim time)
+
+function parseArgs(argv) {
+  const opts = { seeds: 10, minutes: 10, seedStart: 1, width: 1280, height: 800, set: [], json: false };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i], next = () => argv[++i];
+    if (a === '--seeds') opts.seeds = Number(next());
+    else if (a === '--minutes') opts.minutes = Number(next());
+    else if (a === '--seed-start') opts.seedStart = Number(next());
+    else if (a === '--size') [opts.width, opts.height] = next().split('x').map(Number);
+    else if (a === '--set') opts.set.push(next());
+    else if (a === '--json') opts.json = true;
+    else if (a === '--help' || a === '-h') { console.log(fs.readFileSync(__filename, 'utf8').split('*/')[0]); process.exit(0); }
+    else throw new Error(`Unknown option ${a}`);
+  }
+  return opts;
+}
+
+function loadContext() {
+  const context = vm.createContext({ console, performance });
+  for (const f of SIM_FILES) {
+    const file = path.join(__dirname, '..', 'js', f);
+    vm.runInContext(fs.readFileSync(file, 'utf8'), context, { filename: file });
+  }
+  return context;
+}
+
+// --set name=value: sim fields (plantRate, drainMult, mutationRate, sensorRange) or config paths such as EVOLVE.dietGap.
+function applySettings(context, sim, sets) {
+  for (const s of sets) {
+    const [key, raw] = s.split('=');
+    const value = JSON.parse(raw);
+    if (key.includes('.')) vm.runInContext(`${key} = ${JSON.stringify(value)}`, context);
+    else if (key in sim) sim[key] = value;
+    else throw new Error(`Unknown setting ${key}`);
+  }
+}
+
+function runSeed(context, opts, seed) {
+  const sim = vm.runInContext(`new Simulation({ width: ${opts.width}, height: ${opts.height}, seed: ${seed} })`, context);
+  applySettings(context, sim, opts.set);
+  if (opts.set.length) sim.reset(seed); // settings that shape the founders must apply before the world is built
+  sim.setSensorRange(sim.sensorRange);
+
+  const totalTicks = Math.round(opts.minutes * 60 * 60);
+  const half = Math.floor(totalTicks / 2);
+  const samples = [];
+  let birthsAtHalf = null, topUpsAtHalf = null;
+  const t0 = performance.now();
+
+  for (let t = 1; t <= totalTicks; t++) {
+    sim.step();
+    if (t === half) { birthsAtHalf = sim.births.slice(); topUpsAtHalf = sim.topUps.slice(); }
+    if (t % SAMPLE_EVERY === 0) samples.push(sim.counts.slice());
+  }
+  const seconds = (performance.now() - t0) / 1000;
+
+  const late = samples.slice(Math.floor(samples.length / 2));
+  const groups = GROUPS.map((name, k) => {
+    const lateCounts = late.map(c => c[k]);
+    const mean = lateCounts.reduce((s, v) => s + v, 0) / Math.max(1, lateCounts.length);
+    const lateBirths = sim.births[k] - birthsAtHalf[k];
+    const lateTopUps = sim.topUps[k] - topUpsAtHalf[k];
+    return {
+      name,
+      final: sim.counts[k],
+      lateMean: mean,
+      lateBirths,
+      lateTopUps,
+      // Thriving: in the second half it held well above its floor and births far outnumbered top-ups.
+      thriving: mean >= vm.runInContext('EVOLVE.groupFloor', context) * 2 && lateBirths >= 3 * Math.max(1, lateTopUps),
+    };
+  });
+
+  const body = { size: 0, speed: 0, turn: 0, sense: 0, diet: 0 };
+  for (const a of sim.agents) for (const k in body) body[k] += a.genome.genes[k];
+  for (const k in body) body[k] = sim.agents.length ? body[k] / sim.agents.length : 0;
+
+  return { seed, groups, maxGen: sim.maxGen, population: sim.agents.length, body, tps: Math.round(totalTicks / seconds) };
+}
+
+function pad(v, n) { return String(v).padStart(n); }
+
+function main() {
+  const opts = parseArgs(process.argv.slice(2));
+  const context = loadContext();
+  const results = [];
+  for (let i = 0; i < opts.seeds; i++) {
+    const r = runSeed(context, opts, opts.seedStart + i);
+    results.push(r);
+    if (!opts.json) {
+      const cols = r.groups.map(g => `${g.name} ${pad(g.lateMean.toFixed(0), 3)} (${pad(g.lateBirths, 4)}b/${pad(g.lateTopUps, 3)}t)${g.thriving ? '*' : ' '}`);
+      console.log(`seed ${pad(r.seed, 4)}  ${cols.join('  ')}  gen ${pad(r.maxGen, 3)}  size ${r.body.size.toFixed(2)}  ${r.tps} t/s`);
+    }
+  }
+
+  const summary = GROUPS.map((name, k) => {
+    const gs = results.map(r => r.groups[k]);
+    const means = gs.map(g => g.lateMean).sort((a, b) => a - b);
+    return {
+      name,
+      thrivingShare: gs.filter(g => g.thriving).length / gs.length,
+      medianLateMean: means[Math.floor(means.length / 2)],
+      lateBirths: gs.reduce((s, g) => s + g.lateBirths, 0),
+      lateTopUps: gs.reduce((s, g) => s + g.lateTopUps, 0),
+    };
+  });
+
+  if (opts.json) {
+    console.log(JSON.stringify({ options: opts, results, summary }, null, 2));
+    return;
+  }
+  console.log(`\n${opts.seeds} seeds x ${opts.minutes} sim-minutes at ${opts.width}x${opts.height}${opts.set.length ? `  (${opts.set.join(', ')})` : ''}`);
+  console.log('Second half of each run. b = births, t = top-ups, * = thriving (mean >= 2x floor and births >= 3x top-ups)');
+  for (const s of summary) {
+    console.log(`  ${s.name.padEnd(6)} thriving in ${pad(Math.round(s.thrivingShare * 100), 3)}% of seeds   median population ${pad(s.medianLateMean.toFixed(0), 3)}   births ${pad(s.lateBirths, 6)}   top-ups ${pad(s.lateTopUps, 4)}`);
+  }
+}
+
+main();

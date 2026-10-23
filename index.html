@@ -86,10 +86,24 @@
       </div>
     </section>
 
-    <div class="actions">
-      <button class="btn" id="reset">Reset world</button>
-      <span class="keys"><kbd>Space</kbd> pause · <kbd>1</kbd>–<kbd>5</kbd> speed</span>
-    </div>
+    <section class="block">
+      <div class="label">World</div>
+      <form class="seed-row" id="seed-form">
+        <label for="seed">Seed</label>
+        <input id="seed" type="text" inputmode="numeric" autocomplete="off" spellcheck="false">
+        <button class="btn" type="submit">Replay seed</button>
+      </form>
+      <div class="actions">
+        <button class="btn" id="reset">New world</button>
+        <button class="btn" id="save">Save world</button>
+        <button class="btn" id="load">Load world</button>
+        <input type="file" id="load-file" accept=".json,application/json" hidden>
+      </div>
+      <p class="note" id="world-status" role="status"></p>
+      <p class="note">The same seed and window size replay the same world, as long as you don't change the sliders. Add <b>?seed=</b> to the address to open a specific seed.</p>
+    </section>
+
+    <span class="keys"><kbd>Space</kbd> pause · <kbd>1</kbd>–<kbd>5</kbd> speed</span>
   </div>
 </aside>
 
@@ -114,6 +128,7 @@
   <div class="insp-foot" id="in-foot">Following the deepest lineage. Click any creature to inspect it.</div>
 </aside>
 
+<script src="js/Random.js" defer></script>
 <script src="js/utils.js" defer></script>
 <script src="js/config.js" defer></script>
 <script src="js/Vector.js" defer></script>

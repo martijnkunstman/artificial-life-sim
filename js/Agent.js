@@ -34,25 +34,50 @@ class Agent {
 
   get fitness() { return this.gained + this.children * 30; }
 
-  encodeTarget(t, d2, slot, range) {
+  // Everything needed to bring this creature back exactly; sensing is recomputed on the next tick.
+  toJSON() {
+    return {
+      id: this.id, genome: this.genome, brain: this.brain, gen: this.gen,
+      x: this.pos.x, y: this.pos.y, heading: this.heading, speed: this.speed,
+      energy: this.energy, age: this.age, maxAge: this.maxAge, digest: this.digest,
+      meals: this.meals, children: this.children, gained: this.gained,
+    };
+  }
+
+  static fromJSON(d) {
+    const a = new Agent(Genome.fromJSON(d.genome), d.x, d.y, NeuralNetwork.fromJSON(d.brain), d.gen);
+    for (const k of ['id', 'heading', 'speed', 'energy', 'age', 'maxAge', 'digest', 'meals', 'children', 'gained']) a[k] = d[k];
+    return a;
+  }
+
+  // Writes angle and closeness at slot and slot + 1; with sized, also the target's size relative to ours
+  // at slot + 2 (0.5 = same size, 1 = twice as big or more).
+  encodeTarget(t, d2, slot, range, sized = false) {
     const inp = this.inputs;
-    if (!t) { inp[slot] = 0; inp[slot + 1] = 0; return; }
+    if (!t) {
+      inp[slot] = 0; inp[slot + 1] = 0;
+      if (sized) inp[slot + 2] = 0;
+      return;
+    }
     const a = Math.atan2(t.pos.y - this.pos.y, t.pos.x - this.pos.x);
     inp[slot] = wrapAngle(a - this.heading) / Math.PI;
     inp[slot + 1] = 1 - Math.sqrt(d2) / range;
+    if (sized) inp[slot + 2] = Math.min(1, t.traits.radius / this.traits.radius / 2);
   }
 
-  // Fill the sensor vector and let the network decide the steering. No hardcoded behaviour.
+  // Fill the sensor vector (order matches INPUT_LABELS) and let the network decide the steering.
+  // No hardcoded behaviour.
   think(sim) {
     const r = sim.rangeOf(this), inp = this.inputs, x = this.pos.x, y = this.pos.y, h = this.heading;
     this.encodeTarget(this.seePlant, this.dPlant, 0, r);
-    this.encodeTarget(this.seePred, this.dPred, 2, r);
-    this.encodeTarget(this.seePrey, this.dPrey, 4, r);
-    inp[6] = sim.wallProximity(x, y, h, r);
-    inp[7] = sim.wallProximity(x, y, h - 0.7, r);
-    inp[8] = sim.wallProximity(x, y, h + 0.7, r);
-    inp[9] = this.energy / this.traits.maxEnergy;
-    inp[10] = this.speed / this.traits.maxSpeed;
+    this.encodeTarget(this.seePred, this.dPred, 2, r, true);
+    this.encodeTarget(this.seePrey, this.dPrey, 5, r, true);
+    inp[8] = sim.wallProximity(x, y, h, r);
+    inp[9] = sim.wallProximity(x, y, h - 0.7, r);
+    inp[10] = sim.wallProximity(x, y, h + 0.7, r);
+    inp[11] = this.energy / this.traits.maxEnergy;
+    inp[12] = this.traits.digest ? this.digest / this.traits.digest : 0;
+    inp[13] = this.speed / this.traits.maxSpeed;
     const o = this.brain.forward(inp);
     this.turn = (o[1] - o[0]) * this.traits.maxTurn;
     this.thrust = (o[2] - o[3]) * this.traits.accel;

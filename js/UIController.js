@@ -8,6 +8,7 @@ class UIController {
     this.lastStats = 0;
     this.lastBrain = 0;
     this.resumeSpeed = 1;
+    this.groupColors = GROUP_COLOR_VARS.map(cssVar);
     this.col = {
       ink: cssVar('--ink'), muted: cssVar('--muted'), line: cssVar('--line'),
       pos: cssVar('--accent'), neg: cssVar('--neg'), mono: cssVar('--mono'),
@@ -55,13 +56,13 @@ class UIController {
 
   bindSliders() {
     const sim = this.sim;
-    const specs = [
-      { id: 'plantRate', fmt: v => `${v} /s`, apply: v => { sim.plantRate = v; } },
-      { id: 'drain', fmt: v => `${v.toFixed(2)}×`, apply: v => { sim.drainMult = v; } },
-      { id: 'mutation', fmt: v => `${Math.round(v * 100)}% of weights`, apply: v => { sim.mutationRate = v; } },
-      { id: 'sensor', fmt: v => `${v} px`, apply: v => sim.setSensorRange(v) },
+    this.sliders = [
+      { id: 'plantRate', key: 'plantRate', fmt: v => `${v} /s`, apply: v => { sim.plantRate = v; } },
+      { id: 'drain', key: 'drainMult', fmt: v => `${v.toFixed(2)}×`, apply: v => { sim.drainMult = v; } },
+      { id: 'mutation', key: 'mutationRate', fmt: v => `${Math.round(v * 100)}% of weights`, apply: v => { sim.mutationRate = v; } },
+      { id: 'sensor', key: 'sensorRange', fmt: v => `${v} px`, apply: v => sim.setSensorRange(v) },
     ];
-    for (const s of specs) {
+    for (const s of this.sliders) {
       const input = this.$(s.id), out = this.$(s.id + '-out');
       const update = () => { const v = Number(input.value); s.apply(v); out.textContent = s.fmt(v); };
       input.addEventListener('input', update);
@@ -69,9 +70,26 @@ class UIController {
     }
   }
 
+  // After loading a world, show the settings it was saved with.
+  syncSliders() {
+    for (const s of this.sliders) {
+      const v = this.sim[s.key];
+      this.$(s.id).value = v;
+      this.$(s.id + '-out').textContent = s.fmt(v);
+    }
+    this.sim.setSensorRange(this.sim.sensorRange);
+  }
+
   bindMisc() {
     const sim = this.sim;
-    this.$('reset').addEventListener('click', () => { sim.reset(); this.lastStats = 0; });
+    this.$('reset').addEventListener('click', () => this.startWorld(Random.newSeed()));
+    this.$('seed-form').addEventListener('submit', e => {
+      e.preventDefault();
+      const s = Number(this.$('seed').value.trim());
+      if (Number.isInteger(s) && s > 0 && s < 4294967296) this.startWorld(s);
+      else this.$('seed').value = sim.seed;
+    });
+    this.showSeed();
     const panel = this.$('panel'), btn = this.$('collapse');
     const setCollapsed = c => {
       panel.classList.toggle('collapsed', c);
@@ -97,6 +115,65 @@ class UIController {
       }
       if (best) { sim.selected = best; sim.pinned = true; }
     });
+  }
+
+  startWorld(seed) {
+    this.sim.reset(seed);
+    this.lastStats = 0;
+    this.showSeed();
+
+    this.$('save').addEventListener('click', () => this.saveWorld());
+    this.$('load').addEventListener('click', () => this.$('load-file').click());
+    this.$('load-file').addEventListener('change', e => {
+      const file = e.target.files[0];
+      e.target.value = '';
+      if (file) this.loadWorld(file);
+    });
+  }
+
+  saveWorld() {
+    const sim = this.sim;
+    const name = `tidepool-seed${sim.seed}-t${sim.ticks}.json`;
+    const blob = new Blob([JSON.stringify(sim.serialize())], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    this.setStatus(`Saved ${name} (${sim.agents.length} creatures, ${Math.round(blob.size / 1024)} KB).`);
+  }
+
+  async loadWorld(file) {
+    const sim = this.sim;
+    try {
+      const data = JSON.parse(await file.text());
+      sim.load(data);
+      this.syncSliders();
+      this.showSeed();
+      this.lastStats = 0;
+      const sized = data.width === sim.W && data.height === sim.H;
+      this.setStatus(`Loaded ${file.name}: ${sim.agents.length} creatures at gen ${sim.maxGen}.` +
+        (sized ? '' : ` It was saved at ${data.width}×${data.height}, so creatures outside this window were moved inside and the run will not replay exactly.`));
+    } catch (err) {
+      this.setStatus(err instanceof SyntaxError ? `${file.name} is not valid JSON.` : err.message);
+    }
+  }
+
+  setStatus(text) {
+    this.$('world-status').textContent = text;
+  }
+
+  // Keep the seed visible and in the address, so the current world can be shared or replayed.
+  showSeed() {
+    const seed = this.sim.seed;
+    this.$('seed').value = seed;
+    try {
+      const url = new URL(location.href);
+      url.searchParams.set('seed', seed);
+      history.replaceState(null, '', url);
+    } catch (err) { /* some embedded viewers refuse URL changes; the seed field still shows it */ }
   }
 
   pickFollow() {
@@ -189,7 +266,7 @@ class UIController {
     const x0 = w - (len - 1) * (w / (n - 1));
     for (let k = 0; k < 3; k++) {
       const s = hist[k];
-      ctx.strokeStyle = sim.groupColors[k];
+      ctx.strokeStyle = this.groupColors[k];
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       for (let i = 0; i < len; i++) {
@@ -198,7 +275,7 @@ class UIController {
       }
       ctx.stroke();
       const ly = bottom - (s[len - 1] / max) * (bottom - top);
-      ctx.fillStyle = sim.groupColors[k];
+      ctx.fillStyle = this.groupColors[k];
       ctx.beginPath(); ctx.arc(w - 2, ly, 2.2, 0, TAU); ctx.fill();
     }
   }

@@ -99,6 +99,7 @@
         <button class="btn" id="load">Load world</button>
         <input type="file" id="load-file" accept=".json,application/json" hidden>
       </div>
+      <label class="check" for="keep-progress"><input type="checkbox" id="keep-progress" checked> Keep progress in this browser</label>
       <p class="note" id="world-status" role="status"></p>
       <p class="note">The same seed and window size replay the same world, as long as you don't change the sliders. Add <b>?seed=</b> to the address to open a specific seed.</p>
     </section>
@@ -142,6 +143,7 @@
 <script src="js/Simulation.js" defer></script>
 <script src="js/Renderer.js" defer></script>
 <script src="js/UIController.js" defer></script>
+<script src="js/AutoSave.js" defer></script>
 <script src="js/main.js" defer></script>
 </body>
 </html>

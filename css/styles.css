@@ -229,3 +229,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .parts-table .head { text-transform: uppercase; letter-spacing: 0.08em; font-size: 9.5px; }
 .parts-table b { color: var(--ink); font-weight: 500; }
 .insp-stats.genes small { letter-spacing: 0.04em; }
+
+.check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink); cursor: pointer; }
+.check input { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; }

@@ -75,6 +75,7 @@ Whether a creature flees threats or chases prey depends entirely on what its net
 | New world | Starts a fresh world with a new random seed |
 | Save world | Downloads the whole world (creatures, brains, plants, statistics, settings) as a JSON file |
 | Load world | Opens a saved world and continues it exactly where it left off |
+| Keep progress in this browser | On by default: the world is kept in this browser and resumed on your next visit. Turning it off removes the kept world. |
 | Click a creature | Shows its network firing live, its body and parts in the inspector, and its eye cones on the map |
 
 Keyboard: `Space` pauses and resumes, `1` to `5` pick a speed.
@@ -82,6 +83,8 @@ Keyboard: `Space` pauses and resumes, `1` to `5` pick a speed.
 ## Seeds and saved worlds
 
 Every rule in the simulation draws from one seeded random generator (`js/Random.js`). The same seed, window size and settings therefore replay the same world, tick for tick. The seed is shown in the panel and kept in the address, so `index.html?seed=4242` reopens world 4242. Particles are purely visual and use their own randomness, so drawing never changes a run.
+
+**Progress in this browser.** The current world is also kept in this browser's localStorage, every 30 seconds and whenever you switch away from or close the tab. Opening the page again resumes it, including its settings, unless the address asks for a different seed (`?seed=`), which starts that world instead. A long run takes roughly 0.5 to 1 MB; if the browser refuses the space, the panel says so and you can still use Save world. Storage stays in this browser on this device only.
 
 A saved world also stores the generator's position, so loading it continues exactly as if it had never stopped. If the window is a different size than when it was saved, creatures outside the window are moved inside and the run no longer replays exactly; the panel says so.
 
@@ -124,6 +127,7 @@ js/ParticleSystem.js   pooled particles for eating, birth and death bursts
 js/Simulation.js       world state, rules and the fixed-step game loop
 js/Renderer.js         canvas drawing: glowing sprites, trails, selection
 js/UIController.js     panel, dashboard, charts and brain inspector
+js/AutoSave.js         keeps the world in localStorage and resumes it on the next visit
 js/main.js             startup
 tools/headless.js      Node runner for balance testing over many seeds
 ```

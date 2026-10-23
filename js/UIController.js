@@ -2,8 +2,9 @@
 
 /* ---------- UIController: DOM bindings, dashboard, brain inspector ---------- */
 class UIController {
-  constructor(sim) {
+  constructor(sim, autosave) {
     this.sim = sim;
+    this.autosave = autosave;
     this.$ = id => document.getElementById(id);
     this.lastStats = 0;
     this.lastBrain = 0;
@@ -64,13 +65,13 @@ class UIController {
     ];
     for (const s of this.sliders) {
       const input = this.$(s.id), out = this.$(s.id + '-out');
-      const update = () => { const v = Number(input.value); s.apply(v); out.textContent = s.fmt(v); };
-      input.addEventListener('input', update);
-      update();
+      input.addEventListener('input', () => { const v = Number(input.value); s.apply(v); out.textContent = s.fmt(v); });
     }
+    // The simulation's settings are the truth (they may come from a resumed world), so show those.
+    this.syncSliders();
   }
 
-  // After loading a world, show the settings it was saved with.
+  // Show the simulation's current settings, e.g. after loading or resuming a world.
   syncSliders() {
     for (const s of this.sliders) {
       const v = this.sim[s.key];
@@ -90,6 +91,23 @@ class UIController {
       else this.$('seed').value = sim.seed;
     });
     this.showSeed();
+
+    this.$('save').addEventListener('click', () => this.saveWorld());
+    this.$('load').addEventListener('click', () => this.$('load-file').click());
+    this.$('load-file').addEventListener('change', e => {
+      const file = e.target.files[0];
+      e.target.value = '';
+      if (file) this.loadWorld(file);
+    });
+
+    const keep = this.$('keep-progress');
+    keep.checked = this.autosave.enabled;
+    keep.addEventListener('change', () => {
+      this.autosave.enabled = keep.checked;
+      this.setStatus(keep.checked
+        ? 'Progress will be kept in this browser and resumed on your next visit.'
+        : 'Progress is no longer kept; the saved world in this browser was removed.');
+    });
     const panel = this.$('panel'), btn = this.$('collapse');
     const setCollapsed = c => {
       panel.classList.toggle('collapsed', c);
@@ -121,14 +139,7 @@ class UIController {
     this.sim.reset(seed);
     this.lastStats = 0;
     this.showSeed();
-
-    this.$('save').addEventListener('click', () => this.saveWorld());
-    this.$('load').addEventListener('click', () => this.$('load-file').click());
-    this.$('load-file').addEventListener('change', e => {
-      const file = e.target.files[0];
-      e.target.value = '';
-      if (file) this.loadWorld(file);
-    });
+    this.autosave.save();
   }
 
   saveWorld() {
@@ -150,6 +161,7 @@ class UIController {
     try {
       const data = JSON.parse(await file.text());
       sim.load(data);
+      this.autosave.save();
       this.syncSliders();
       this.showSeed();
       this.lastStats = 0;
@@ -198,6 +210,10 @@ class UIController {
 
   updateStats() {
     const sim = this.sim, $ = this.$;
+    if (this.autosave.lastError && !this.reportedSaveError) {
+      this.reportedSaveError = true;
+      this.setStatus("This world is too large for this browser's storage, so it is no longer kept automatically. Use Save world to keep it as a file.");
+    }
     const gens = [0, 0, 0];
     for (const a of sim.agents) if (a.gen > gens[a.kind]) gens[a.kind] = a.gen;
     for (let k = 0; k < 3; k++) {

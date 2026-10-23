@@ -93,3 +93,5 @@ const PLANT_CAP = 900;
 /* ---------- saved worlds ---------- */
 const SAVE_FORMAT = 'neural-tidepool-world';
 const SAVE_VERSION = 2;
+const AUTOSAVE_KEY = 'neural-tidepool:world';
+const AUTOSAVE_PREF_KEY = 'neural-tidepool:keep-progress';

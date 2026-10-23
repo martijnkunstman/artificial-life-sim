@@ -214,3 +214,18 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   padding: 7px 9px;
 }
 .actions .btn { flex: 1; }
+
+.parts-table {
+  display: grid;
+  grid-template-columns: 1fr repeat(6, auto);
+  column-gap: 8px;
+  row-gap: 2px;
+  font: 10.5px var(--mono);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.parts-table > :nth-child(7n + 1) { font-family: var(--body); font-size: 11px; }
+.parts-table > :not(:nth-child(7n + 1)) { text-align: right; }
+.parts-table .head { text-transform: uppercase; letter-spacing: 0.08em; font-size: 9.5px; }
+.parts-table b { color: var(--ink); font-weight: 500; }
+.insp-stats.genes small { letter-spacing: 0.04em; }

@@ -217,18 +217,25 @@ class UIController {
     $('st-time').textContent = (hh ? `${hh}:${String(mm).padStart(2, '0')}` : `${mm}`) + `:${String(ss).padStart(2, '0')}`;
   }
 
-  // Histogram of the diet gene across the living population, plus the average body.
+  // Histogram of the diet gene across the living population, plus each diet group's average body.
   drawDiet() {
     const c = this.diet, sim = this.sim;
-    const bins = new Array(24).fill(0), sum = { size: 0, speed: 0, turn: 0, sense: 0 };
+    const bins = new Array(24).fill(0);
+    const cols = ['size', 'eye', 'fin', 'jaw', 'spike', 'armour'];
+    const sums = DIET_GROUPS.map(() => Object.fromEntries(cols.map(k => [k, 0])));
     for (const a of sim.agents) {
       bins[Math.min(bins.length - 1, Math.floor(a.diet * bins.length))]++;
-      for (const k in sum) sum[k] += a.genome.genes[k];
+      const s = sums[a.kind];
+      s.size += a.genome.genes.size;
+      for (const p of a.genome.parts) if (p.type in s) s[p.type]++;
     }
-    const n = sim.agents.length;
-    this.$('body-avg').textContent = n
-      ? 'Average body: ' + Object.keys(sum).map(k => `${GENE_LABELS[k].toLowerCase()} ${(sum[k] / n).toFixed(2)}`).join(' · ')
-      : '';
+    // Numbers only go into this markup, so building it as a string is safe.
+    let html = '<span class="head">avg</span>' + ['size', 'eyes', 'fins', 'jaws', 'spikes', 'armour'].map(h => `<span class="head">${h}</span>`).join('');
+    DIET_GROUPS.forEach((name, k) => {
+      const n = sim.counts[k];
+      html += `<span>${['Plants', 'Mixed', 'Meat'][k]}</span>` + cols.map(col => `<span>${n ? (sums[k][col] / n).toFixed(col === 'size' ? 2 : 1) : '–'}</span>`).join('');
+    });
+    this.$('body-avg').innerHTML = html;
     if (!this.fitCanvas(c)) return;
     const { ctx, w, h } = c;
     ctx.clearRect(0, 0, w, h);
@@ -291,7 +298,18 @@ class UIController {
     $('in-name').textContent = a.traits.name;
     $('in-meta').textContent = `#${a.id} · gen ${a.gen}`;
     $('in-energy').style.width = `${Math.max(0, Math.min(1, a.energy / a.traits.maxEnergy)) * 100}%`;
-    for (const k in GENE_LABELS) $('gn-' + k).textContent = a.genome.genes[k].toFixed(2);
+    const t = a.traits;
+    $('gn-size').textContent = a.genome.genes.size.toFixed(2);
+    $('gn-diet').textContent = a.diet.toFixed(2);
+    $('gn-mass').textContent = t.mass.toFixed(2);
+    $('gn-speed').textContent = t.maxSpeed.toFixed(2);
+    $('gn-defence').textContent = `${Math.round(t.defence * 100)}%`;
+    const parts = PART_TYPES.map(type => {
+      const n = a.genome.count(type);
+      return n ? `${n} ${type}${n > 1 && type !== 'armour' && type !== 'fat' ? 's' : ''}` : null;
+    }).filter(Boolean);
+    $('in-parts').textContent = 'Parts: ' + (parts.length ? parts.join(' · ') : 'none') +
+      (t.jawRatio ? ` · eats prey up to ${t.jawRatio.toFixed(2)}× its size` : ' · cannot hunt');
     $('in-age').textContent = `${Math.floor(a.age / TICKS_PER_SEC)} s`;
     $('in-meals').textContent = a.meals;
     $('in-kids').textContent = a.children;

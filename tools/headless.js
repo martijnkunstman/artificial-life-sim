@@ -95,11 +95,19 @@ function runSeed(context, opts, seed) {
     };
   });
 
-  const body = { size: 0, speed: 0, turn: 0, sense: 0, diet: 0 };
-  for (const a of sim.agents) for (const k in body) body[k] += a.genome.genes[k];
-  for (const k in body) body[k] = sim.agents.length ? body[k] / sim.agents.length : 0;
+  // Average body per diet group: size and number of each part type.
+  const partTypes = vm.runInContext('PART_TYPES', context);
+  const bodies = GROUPS.map(() => Object.fromEntries([['n', 0], ['size', 0], ...partTypes.map(t => [t, 0])]));
+  for (const a of sim.agents) {
+    const b = bodies[a.kind];
+    b.n++;
+    b.size += a.genome.genes.size;
+    for (const p of a.genome.parts) b[p.type]++;
+  }
+  for (const b of bodies) for (const k in b) if (k !== 'n' && b.n) b[k] /= b.n;
+  const body = { size: sim.agents.reduce((s, a) => s + a.genome.genes.size, 0) / Math.max(1, sim.agents.length) };
 
-  return { seed, groups, maxGen: sim.maxGen, population: sim.agents.length, body, tps: Math.round(totalTicks / seconds) };
+  return { seed, groups, maxGen: sim.maxGen, population: sim.agents.length, body, bodies, tps: Math.round(totalTicks / seconds) };
 }
 
 function pad(v, n) { return String(v).padStart(n); }
@@ -138,6 +146,14 @@ function main() {
   for (const s of summary) {
     console.log(`  ${s.name.padEnd(6)} thriving in ${pad(Math.round(s.thrivingShare * 100), 3)}% of seeds   median population ${pad(s.medianLateMean.toFixed(0), 3)}   births ${pad(s.lateBirths, 6)}   top-ups ${pad(s.lateTopUps, 4)}`);
   }
+  // Average final body per group, over the seeds where that group had living members.
+  const types = Object.keys(results[0].bodies[0]).filter(k => k !== 'n');
+  console.log(`\nAverage body at the end (per creature)\n  group  ${types.map(t => t.padStart(7)).join('')}`);
+  GROUPS.forEach((name, k) => {
+    const alive = results.map(r => r.bodies[k]).filter(b => b.n);
+    const avg = t => alive.length ? alive.reduce((s, b) => s + b[t], 0) / alive.length : NaN;
+    console.log(`  ${name.padEnd(6)} ${types.map(t => pad(avg(t).toFixed(2), 7)).join('')}`);
+  });
 }
 
 main();

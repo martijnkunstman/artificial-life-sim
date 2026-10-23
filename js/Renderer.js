@@ -125,6 +125,7 @@ class Renderer {
       const c = Math.cos(a.heading) * s, sn = Math.sin(a.heading) * s;
       ctx.setTransform(c, sn, -sn, c, a.pos.x * dpr, a.pos.y * dpr);
       ctx.drawImage(spr.img, -L / 2, -L / 2, L, L);
+      this.drawParts(ctx, a);
     }
 
     // Particles
@@ -143,6 +144,76 @@ class Renderer {
     this.drawOverlay();
   }
 
+  // Parts drawn in the creature's own frame (heading along +x, body radius DIET_SPRITE_RADIUS).
+  // Each sits on an ellipse that roughly follows the body outline.
+  drawParts(ctx, a) {
+    const parts = a.genome.parts, R = DIET_SPRITE_RADIUS;
+    const edge = ang => [Math.cos(ang) * R * 1.35, Math.sin(ang) * R];
+    ctx.lineCap = 'round';
+    let spikeIndex = 0;
+    const spikeCount = a.genome.count('spike');
+    for (const p of parts) {
+      switch (p.type) {
+        case 'fin': {
+          const [x, y] = edge(p.angle), len = R * (0.55 + 0.5 * p.power);
+          // Points outward from where it sits, swept halfway toward the tail.
+          const side = p.angle >= 0 ? 1 : -1;
+          const back = p.angle + (Math.PI - Math.abs(p.angle)) * 0.5 * side;
+          ctx.fillStyle = a.color;
+          ctx.globalAlpha = 0.75;
+          ctx.beginPath();
+          ctx.moveTo(x + Math.cos(p.angle + 1.2) * 2, y + Math.sin(p.angle + 1.2) * 2);
+          ctx.lineTo(x + Math.cos(back) * len, y + Math.sin(back) * len);
+          ctx.lineTo(x + Math.cos(p.angle - 1.2) * 2, y + Math.sin(p.angle - 1.2) * 2);
+          ctx.fill();
+          break;
+        }
+        case 'eye': {
+          const [x, y] = edge(p.angle);
+          ctx.globalAlpha = 0.95;
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath(); ctx.arc(x * 0.8, y * 0.8, 1.2 + 0.5 * p.reach, 0, TAU); ctx.fill();
+          ctx.fillStyle = '#04101c';
+          ctx.beginPath(); ctx.arc(x * 0.8 + Math.cos(p.angle) * 0.6, y * 0.8 + Math.sin(p.angle) * 0.6, 0.7, 0, TAU); ctx.fill();
+          break;
+        }
+        case 'jaw': {
+          ctx.strokeStyle = '#ffffff';
+          ctx.globalAlpha = 0.8;
+          ctx.lineWidth = 1 + 0.6 * p.power;
+          const tip = R * 1.7, len = 2 + 3 * p.power;
+          ctx.beginPath();
+          ctx.moveTo(tip - 3, -2.4); ctx.quadraticCurveTo(tip + len * 0.6, -2.6, tip + len, -0.6);
+          ctx.moveTo(tip - 3, 2.4); ctx.quadraticCurveTo(tip + len * 0.6, 2.6, tip + len, 0.6);
+          ctx.stroke();
+          break;
+        }
+        case 'spike': {
+          // Spikes have no direction gene; spread them evenly around the body.
+          const ang = (spikeIndex++ + 0.5) / spikeCount * TAU;
+          const [x, y] = edge(ang), len = 2 + 3.5 * p.length;
+          ctx.strokeStyle = '#ffffff';
+          ctx.globalAlpha = 0.7;
+          ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(ang) * len, y + Math.sin(ang) * len); ctx.stroke();
+          break;
+        }
+        case 'armour':
+          ctx.strokeStyle = 'rgba(200, 225, 255, 0.55)';
+          ctx.globalAlpha = 1;
+          ctx.lineWidth = 0.8 + 0.9 * p.thickness;
+          ctx.beginPath(); ctx.ellipse(0, 0, R * 1.45, R * 1.12, 0, 0, TAU); ctx.stroke();
+          break;
+        case 'fat':
+          ctx.fillStyle = 'rgba(255, 236, 170, 0.35)';
+          ctx.globalAlpha = 1;
+          ctx.beginPath(); ctx.ellipse(-R * 0.3, 0, R * 0.45 * p.amount, R * 0.35 * p.amount, 0, 0, TAU); ctx.fill();
+          break;
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
   // Selection UI lives on its own fully cleared layer so it never smears into the trails.
   drawOverlay() {
     const o = this.octx, sim = this.sim, a = sim.selected;
@@ -151,11 +222,19 @@ class Renderer {
     if (!a || a.dead) return;
     o.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     const x = a.pos.x, y = a.pos.y;
-    o.setLineDash([3, 5]);
-    o.strokeStyle = 'rgba(180, 215, 245, 0.18)';
+    // What the creature can see: one wedge per eye.
     o.lineWidth = 1;
-    o.beginPath(); o.arc(x, y, sim.rangeOf(a), 0, TAU); o.stroke();
-    o.setLineDash([]);
+    for (const eye of a.traits.eyes) {
+      const mid = a.heading + eye.angle, r = sim.sensorRange * eye.reach;
+      o.fillStyle = 'rgba(180, 215, 245, 0.05)';
+      o.strokeStyle = 'rgba(180, 215, 245, 0.22)';
+      o.beginPath();
+      o.moveTo(x, y);
+      o.arc(x, y, r, mid - eye.width, mid + eye.width);
+      o.closePath();
+      o.fill();
+      o.stroke();
+    }
     const link = (t, color) => {
       if (!t || t.dead || t.eaten) return;
       o.strokeStyle = color; o.globalAlpha = 0.55;

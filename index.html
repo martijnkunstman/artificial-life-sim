@@ -28,7 +28,7 @@
   </header>
 
   <div class="panel-body" id="panel-body">
-    <p class="note">Every creature inherits body genes: size, speed, agility, sight and diet. Diet groups emerge from the diet gene; nothing is assigned.</p>
+    <p class="note">Every creature inherits a body: size and diet genes plus parts (eyes, fins, jaws, spikes, armour, fat) that mutate, appear and disappear. Diet groups emerge from the diet gene; nothing is assigned.</p>
 
     <section class="block">
       <div class="label">Time scale</div>
@@ -62,7 +62,7 @@
         <div class="label">Diet spread</div>
         <canvas id="diet" aria-label="Number of living creatures by diet, from plants to meat"></canvas>
         <div class="diet-axis" aria-hidden="true"><span>plants</span><span>mixed</span><span>meat</span></div>
-        <p class="note" id="body-avg"></p>
+        <div class="parts-table" id="body-avg" aria-label="Average body per diet group"></div>
       </div>
     </section>
 
@@ -120,11 +120,12 @@
   </div>
   <div class="insp-stats genes" id="in-genes">
     <div><small>Size</small><b id="gn-size">–</b></div>
-    <div><small>Speed</small><b id="gn-speed">–</b></div>
-    <div><small>Agility</small><b id="gn-turn">–</b></div>
-    <div><small>Sight</small><b id="gn-sense">–</b></div>
     <div><small>Diet</small><b id="gn-diet">–</b></div>
+    <div><small>Mass</small><b id="gn-mass">–</b></div>
+    <div><small>Speed</small><b id="gn-speed">–</b></div>
+    <div><small>Defence</small><b id="gn-defence">–</b></div>
   </div>
+  <div class="insp-foot" id="in-parts"></div>
   <div class="insp-foot" id="in-foot">Following the deepest lineage. Click any creature to inspect it.</div>
 </aside>
 

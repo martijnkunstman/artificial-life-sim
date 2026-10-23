@@ -15,6 +15,7 @@ class Simulation {
     this.agentGrid = new SpatialGrid();
     this.plantGrid = new SpatialGrid();
     this.particles = particles;
+    this.eyeBuf = new Float64Array(PART_SPECS.eye.max * 4);
     this.plantColor = plantColor;
     this.renderer = null;
     this.ui = null;
@@ -124,7 +125,7 @@ class Simulation {
   resizeGrids() {
     // Cell size == the longest possible sight, so sense() only scans the 3x3 block around a creature.
     // (Measured: smaller cells with a wider block were slower, because the extra cells cost more than they skip.)
-    const cell = Math.max(40, this.sensorRange * GENE_RANGES.sense[1]);
+    const cell = Math.max(40, this.sensorRange * PART_SPECS.eye.params.reach[1]);
     this.agentGrid.resize(this.W, this.H, cell);
     this.plantGrid.resize(this.W, this.H, cell);
   }
@@ -167,12 +168,40 @@ class Simulation {
   // No fixed food chain: a hunter needs some meat digestion, a clearly more meat-leaning diet
   // than its prey, and a body not much smaller than the prey's.
   canEat(a, b) {
-    return a.traits.meatEff >= EVOLVE.minMeatEff
+    return a.traits.jawRatio > 0
+      && a.traits.meatEff >= EVOLVE.minMeatEff
       && b.diet < a.diet - EVOLVE.dietGap
-      && b.traits.radius <= a.traits.radius * EVOLVE.sizeRatio;
+      && b.traits.radius <= a.traits.radius * a.traits.jawRatio;
   }
 
-  // Nearest plant, predator and prey within sensor range, scanning only the grid cells that sight can reach (3x3).
+  // Fill this.eyeBuf with each eye's world direction, cone and squared reach for agent a.
+  aimEyes(a) {
+    const eyes = a.traits.eyes, buf = this.eyeBuf;
+    for (let e = 0; e < eyes.length; e++) {
+      const eye = eyes[e], ang = a.heading + eye.angle, reach = this.sensorRange * eye.reach;
+      buf[e * 4] = Math.cos(ang);
+      buf[e * 4 + 1] = Math.sin(ang);
+      buf[e * 4 + 2] = eye.cosWidth;
+      buf[e * 4 + 3] = reach * reach;
+    }
+    return eyes.length;
+  }
+
+  // Something is visible when it lies inside any eye's cone and reach, or close enough to touch.
+  visible(nEyes, dx, dy, d2, touch2) {
+    if (d2 <= touch2) return true;
+    const buf = this.eyeBuf;
+    let d = -1;
+    for (let e = 0; e < nEyes; e++) {
+      if (d2 > buf[e * 4 + 3]) continue;
+      if (d < 0) d = Math.sqrt(d2);
+      if (dx * buf[e * 4] + dy * buf[e * 4 + 1] >= buf[e * 4 + 2] * d) return true;
+    }
+    return false;
+  }
+
+  // Nearest visible plant, predator and prey, scanning only the grid cells that sight can reach (3x3).
+  // Only what falls in an eye's cone counts, so where a body's eyes point decides what its brain can react to.
   sense(a) {
     const range = this.rangeOf(a), r2 = range * range;
     const x = a.pos.x, y = a.pos.y;
@@ -184,6 +213,7 @@ class Simulation {
     const cx = clamp(Math.floor(x / g.cell), 0, g.cols - 1);
     const cy = clamp(Math.floor(y / g.cell), 0, g.rows - 1);
     let bp = null, bpd = r2, bd = null, bdd = r2, by = null, byd = r2;
+    const nEyes = this.aimEyes(a), touch = a.traits.radius * 2.5, touch2 = touch * touch;
 
     for (let gy = Math.max(0, cy - span); gy <= Math.min(g.rows - 1, cy + span); gy++) {
       for (let gx = Math.max(0, cx - span); gx <= Math.min(g.cols - 1, cx + span); gx++) {
@@ -193,7 +223,7 @@ class Simulation {
             const p = plants[i];
             if (p.eaten) continue;
             const dx = p.pos.x - x, dy = p.pos.y - y, d2 = dx * dx + dy * dy;
-            if (d2 < bpd) { bpd = d2; bp = p; }
+            if (d2 < bpd && this.visible(nEyes, dx, dy, d2, touch2)) { bpd = d2; bp = p; }
           }
         }
         for (let i = ahead[c]; i !== -1; i = anext[i]) {
@@ -201,6 +231,7 @@ class Simulation {
           if (o === a || o.dead) continue;
           const dx = o.pos.x - x, dy = o.pos.y - y, d2 = dx * dx + dy * dy;
           if (d2 >= bdd && d2 >= byd) continue;
+          if (!this.visible(nEyes, dx, dy, d2, touch2)) continue;
           if (d2 < bdd && this.canEat(o, a)) { bdd = d2; bd = o; }
           else if (d2 < byd && this.canEat(a, o)) { byd = d2; by = o; }
         }
@@ -226,6 +257,13 @@ class Simulation {
     if (q && !q.dead && a.digest === 0) {
       const rr = (t.radius + q.traits.radius) * BODY.biteReach;
       if (a.pos.distSq(q.pos) < rr * rr) {
+        // Spikes and armour can turn a bite away; spikes also hurt the attacker.
+        if (chance(q.traits.defence)) {
+          a.energy -= q.traits.spikeDamage;
+          a.digest = BODY.recoil;
+          this.fx(q.pos.x, q.pos.y, '#ffffff', 6, 2.2, 18, 1.2);
+          return;
+        }
         const leftover = Math.max(0, q.energy);
         a.gain(t.meatEff * (q.traits.bodyValue + leftover * BODY.leftover));
         a.digest = t.digest;

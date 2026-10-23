@@ -7,6 +7,7 @@ class Simulation {
   constructor({ width = WORLD_SIZE, height = WORLD_SIZE, seed = Random.newSeed(), particles = null, plantColor = '#e8dc74' } = {}) {
     this.W = width;
     this.H = height;
+    this.area = width * height / AREA_UNIT; // populations and plant growth scale with this
     this.plantRate = 16;
     this.drainMult = 1;
     this.mutationRate = 0.08;
@@ -52,8 +53,8 @@ class Simulation {
     this.pinned = false;
     this.focus = null;
     if (this.particles) this.particles.clear();
-    this.zones = Array.from({ length: 3 }, () => ({
-      x: rand(0.2, 0.8) * this.W, y: rand(0.2, 0.8) * this.H,
+    this.zones = Array.from({ length: Math.max(1, Math.round(ZONES * this.area)) }, () => ({
+      x: rand(0, this.W), y: rand(0, this.H),
       vx: rand(-0.25, 0.25), vy: rand(-0.25, 0.25),
     }));
     this.resizeGrids();
@@ -61,20 +62,20 @@ class Simulation {
     // first one found species of their own).
     EVOLVE.founders.forEach((n, k) => {
       let first = null;
-      for (let i = 0; i < n; i++) {
+      for (let i = 0; i < Math.round(n * this.area); i++) {
         const a = this.spawnAgent(Genome.founder(k), null, 0, first);
         first = first || a.species;
       }
     });
-    for (let i = 0; i < 240; i++) this.spawnPlant();
+    for (let i = 0; i < 240 * this.area; i++) this.spawnPlant();
     if (this.renderer) this.renderer.clear();
   }
 
   // A complete snapshot: world, statistics, best-genome archive and the random generator's position,
-  // so a loaded world continues exactly where it was saved (when it was saved at this world size).
+  // so a loaded world continues exactly where it was saved.
   serialize() {
     return {
-      format: SAVE_FORMAT, version: SAVE_VERSION,
+      format: SAVE_FORMAT, version: VERSION,
       seed: this.seed, rngState: rng.state, ticks: this.ticks,
       width: this.W, height: this.H,
       settings: { plantRate: this.plantRate, drainMult: this.drainMult, mutationRate: this.mutationRate, sensorRange: this.sensorRange },
@@ -90,9 +91,10 @@ class Simulation {
 
   load(d) {
     if (!d || d.format !== SAVE_FORMAT) throw new Error('That file is not a saved Neural Tidepool world.');
-    if (d.version !== SAVE_VERSION && d.version !== 2) throw new Error(`That world was saved by a different version (format ${d.version}, this page reads ${SAVE_VERSION}).`);
-    const inputs = d.agents[0] && d.agents[0].brain.sizes[0];
-    if (inputs && inputs !== BRAIN_SHAPE[0]) throw new Error(`That world's brains have ${inputs} inputs; this version uses ${BRAIN_SHAPE[0]}.`);
+    // Only worlds saved by this exact version load; anything older starts fresh rather than being converted.
+    if (d.version !== VERSION) {
+      throw new Error(`That world was saved by version ${d.version || 'unknown'}; this is version ${VERSION}, which only opens its own worlds.`);
+    }
 
     Object.assign(this, d.settings);
     this.seed = d.seed;
@@ -107,20 +109,16 @@ class Simulation {
     this.reseeds = d.reseeds;
     this.topUps = d.topUps;
     this.fame = d.fame.map(list => list.map(e => ({
-      fitness: e.fitness, gen: e.gen, species: e.species || 0, genome: Genome.fromJSON(e.genome), brain: NeuralNetwork.fromJSON(e.brain),
+      fitness: e.fitness, gen: e.gen, species: e.species, genome: Genome.fromJSON(e.genome), brain: NeuralNetwork.fromJSON(e.brain),
     })));
     this.counts = [0, 0, 0];
     for (const a of this.agents) this.counts[a.kind]++;
     this.progress.load(d.progress);
-    if (d.species) {
-      this.species.load(d.species);
-      this.speciesHistory = d.speciesHistory;
-      for (const s of this.species.list) s.count = 0;
-      for (const a of this.agents) { a.species = this.species.get(a.speciesId); a.species.count++; }
-      this.species.alive = this.species.list.filter(s => s.count > 0).length;
-    } else {
-      this.migrateSpecies();
-    }
+    this.species.load(d.species);
+    this.speciesHistory = d.speciesHistory;
+    for (const s of this.species.list) s.count = 0;
+    for (const a of this.agents) { a.species = this.species.get(a.speciesId); a.species.count++; }
+    this.species.alive = this.species.list.filter(s => s.count > 0).length;
     Agent.nextId = this.agents.reduce((m, a) => Math.max(m, a.id), 0) + 1;
     this.selected = null;
     this.pinned = false;
@@ -128,32 +126,8 @@ class Simulation {
     if (this.particles) this.particles.clear();
     // Restore the generator last: rebuilding the agents above drew from it.
     rng.state = d.rngState >>> 0;
-    this.fitSaved(d.width, d.height);
     this.resizeGrids();
     if (this.renderer) this.renderer.clear();
-  }
-
-  // Worlds saved before species existed: group the living creatures into species by body,
-  // each joining the first species whose founding body is close enough.
-  migrateSpecies() {
-    this.species.clear();
-    this.speciesHistory = [];
-    for (const a of [...this.agents].sort((m, n) => m.id - n.id)) {
-      a.species = this.species.list.find(s => Genome.distance(a.genome, s.rep) <= SPECIES.threshold)
-        || this.species.found(a.genome, null, this.ticks);
-      this.species.join(a.species);
-    }
-  }
-
-  // Worlds saved at another size (before the world had a fixed size, it followed the window)
-  // are stretched to fill this world, so creatures and plants keep their layout.
-  fitSaved(w, h) {
-    if (w === this.W && h === this.H) return;
-    const sx = this.W / w, sy = this.H / h;
-    const fit = p => { p.x = clamp(p.x * sx, 0, this.W); p.y = clamp(p.y * sy, 0, this.H); };
-    for (const a of this.agents) fit(a.pos);
-    for (const p of this.plants) fit(p.pos);
-    for (const z of this.zones) fit(z);
   }
 
   setSensorRange(r) { this.sensorRange = r; this.resizeGrids(); }
@@ -169,7 +143,7 @@ class Simulation {
   }
 
   // from is the species of the creature's parent (null for none); see SpeciesRegistry.assign.
-  spawnAgent(genome, brain, gen, from = null, x = rand(20, this.W - 20), y = rand(20, this.H - 20)) {
+  spawnAgent(genome, brain, gen, from = null, x = rand(0, this.W), y = rand(0, this.H)) {
     const a = new Agent(genome, x, y, brain, gen);
     this.agents.push(a);
     this.counts[a.kind]++;
@@ -180,30 +154,21 @@ class Simulation {
   }
 
   spawnPlant() {
-    if (this.plants.length >= PLANT_CAP) return;
+    if (this.plants.length >= PLANT_CAP * this.area) return;
     let x, y;
     if (chance(0.65)) {
       // Fertile currents: most growth clusters around slowly drifting zones.
       const z = pick(this.zones);
-      const spread = 60 + 0.12 * Math.min(this.W, this.H);
-      x = z.x + gauss() * spread;
-      y = z.y + gauss() * spread;
+      x = z.x + gauss() * ZONE_SPREAD;
+      y = z.y + gauss() * ZONE_SPREAD;
     } else {
       x = rand(0, this.W);
       y = rand(0, this.H);
     }
-    x = clamp(x, 6, this.W - 6);
-    y = clamp(y, 6, this.H - 6);
+    x = wrap(x, this.W);
+    y = wrap(y, this.H);
     this.plants.push(new Plant(x, y, this.ticks));
     this.plantsSpawned++;
-  }
-
-  wallProximity(x, y, a, r) {
-    const c = Math.cos(a), s = Math.sin(a);
-    let d = Infinity;
-    if (c > 1e-6) d = (this.W - x) / c; else if (c < -1e-6) d = -x / c;
-    if (s > 1e-6) d = Math.min(d, (this.H - y) / s); else if (s < -1e-6) d = Math.min(d, -y / s);
-    return d >= r ? 0 : 1 - d / r;
   }
 
   // No fixed food chain: a hunter needs some meat digestion, a clearly more meat-leaning diet
@@ -213,6 +178,12 @@ class Simulation {
       && a.traits.meatEff >= EVOLVE.minMeatEff
       && b.diet < a.diet - EVOLVE.dietGap
       && b.traits.radius <= a.traits.radius * a.traits.jawRatio;
+  }
+
+  // Squared distance between two points, the short way round the wrapping world.
+  dist2(p, q) {
+    const dx = wrapDelta(q.x - p.x, this.W), dy = wrapDelta(q.y - p.y, this.H);
+    return dx * dx + dy * dy;
   }
 
   // Fill this.eyeBuf with each eye's world direction, cone and squared reach for agent a.
@@ -243,34 +214,51 @@ class Simulation {
 
   // Nearest visible plant, predator and prey, scanning only the grid cells that sight can reach (3x3).
   // Only what falls in an eye's cone counts, so where a body's eyes point decides what its brain can react to.
+  // The world wraps, so the scan continues across the seam and distances run the short way round.
   sense(a) {
     const range = this.rangeOf(a), r2 = range * range;
-    const x = a.pos.x, y = a.pos.y;
+    const x = a.pos.x, y = a.pos.y, W = this.W, H = this.H;
     const eatsPlants = a.traits.plantGain > 0;
     const g = this.agentGrid, pg = this.plantGrid;
     const agents = g.items, ahead = g.head, anext = g.next;
     const plants = pg.items, phead = pg.head, pnext = pg.next;
-    const span = Math.ceil(range / g.cell);
-    const cx = clamp(Math.floor(x / g.cell), 0, g.cols - 1);
-    const cy = clamp(Math.floor(y / g.cell), 0, g.rows - 1);
+    const spanX = Math.ceil(range / g.cw), spanY = Math.ceil(range / g.ch);
+    // On a small world the block may cover every column (or row); then each is scanned once and
+    // distances along that axis are wrapped one by one.
+    const nx = Math.min(2 * spanX + 1, g.cols), ny = Math.min(2 * spanY + 1, g.rows);
+    const allX = nx === g.cols, allY = ny === g.rows;
+    const cx = clamp(Math.floor(x / g.cw), 0, g.cols - 1) - (allX ? 0 : spanX);
+    const cy = clamp(Math.floor(y / g.ch), 0, g.rows - 1) - (allY ? 0 : spanY);
     let bp = null, bpd = r2, bd = null, bdd = r2, by = null, byd = r2;
     const nEyes = this.aimEyes(a), touch = a.traits.radius * 2.5, touch2 = touch * touch;
 
-    for (let gy = Math.max(0, cy - span); gy <= Math.min(g.rows - 1, cy + span); gy++) {
-      for (let gx = Math.max(0, cx - span); gx <= Math.min(g.cols - 1, cx + span); gx++) {
+    for (let j = 0; j < ny; j++) {
+      // A cell beyond the seam holds things whose coordinates are a world's width (or height) away:
+      // shift them by that, so plain differences give the short way round (much cheaper than wrapping each).
+      let gy = cy + j, oy = y;
+      if (gy < 0) { gy += g.rows; oy += H; } else if (gy >= g.rows) { gy -= g.rows; oy -= H; }
+      for (let i = 0; i < nx; i++) {
+        let gx = cx + i, ox = x;
+        if (gx < 0) { gx += g.cols; ox += W; } else if (gx >= g.cols) { gx -= g.cols; ox -= W; }
         const c = gy * g.cols + gx;
         if (eatsPlants) {
           for (let i = phead[c]; i !== -1; i = pnext[i]) {
             const p = plants[i];
             if (p.eaten) continue;
-            const dx = p.pos.x - x, dy = p.pos.y - y, d2 = dx * dx + dy * dy;
+            let dx = p.pos.x - ox, dy = p.pos.y - oy;
+            if (allX) dx = wrapDelta(dx, W);
+            if (allY) dy = wrapDelta(dy, H);
+            const d2 = dx * dx + dy * dy;
             if (d2 < bpd && this.visible(nEyes, dx, dy, d2, touch2)) { bpd = d2; bp = p; }
           }
         }
         for (let i = ahead[c]; i !== -1; i = anext[i]) {
           const o = agents[i];
           if (o === a || o.dead) continue;
-          const dx = o.pos.x - x, dy = o.pos.y - y, d2 = dx * dx + dy * dy;
+          let dx = o.pos.x - ox, dy = o.pos.y - oy;
+          if (allX) dx = wrapDelta(dx, W);
+          if (allY) dy = wrapDelta(dy, H);
+          const d2 = dx * dx + dy * dy;
           if (d2 >= bdd && d2 >= byd) continue;
           if (!this.visible(nEyes, dx, dy, d2, touch2)) continue;
           if (d2 < bdd && this.canEat(o, a)) { bdd = d2; bd = o; }
@@ -288,7 +276,7 @@ class Simulation {
     const p = a.seePlant;
     if (p && !p.eaten) {
       const rr = t.radius + PLANT_RADIUS + 1;
-      if (a.pos.distSq(p.pos) < rr * rr) {
+      if (this.dist2(a.pos, p.pos) < rr * rr) {
         p.eaten = true;
         a.gain(t.plantGain);
         this.fx(p.pos.x, p.pos.y, this.plantColor, 6, 1.6, 22, 1.4);
@@ -297,7 +285,7 @@ class Simulation {
     const q = a.seePrey;
     if (q && !q.dead && a.digest === 0) {
       const rr = (t.radius + q.traits.radius) * BODY.biteReach;
-      if (a.pos.distSq(q.pos) < rr * rr) {
+      if (this.dist2(a.pos, q.pos) < rr * rr) {
         // Spikes and armour can turn a bite away; spikes also hurt the attacker.
         if (chance(q.traits.defence)) {
           a.energy -= q.traits.spikeDamage;
@@ -340,15 +328,15 @@ class Simulation {
 
   reproduce(a) {
     const t = a.traits;
-    if (this.agents.length >= EVOLVE.cap) return;
+    if (this.agents.length >= EVOLVE.cap * this.area) return;
     a.energy -= t.reproCost;
     a.children++;
     const brain = a.brain.clone().mutate(this.mutationRate);
     const genome = a.genome.clone().mutate(this.mutationRate * EVOLVE.bodyMutation);
     const back = a.heading + Math.PI;
     const child = this.spawnAgent(genome, brain, a.gen + 1, a.species,
-      clamp(a.pos.x + Math.cos(back) * t.radius * 2, 5, this.W - 5),
-      clamp(a.pos.y + Math.sin(back) * t.radius * 2, 5, this.H - 5));
+      wrap(a.pos.x + Math.cos(back) * t.radius * 2, this.W),
+      wrap(a.pos.y + Math.sin(back) * t.radius * 2, this.H));
     child.energy = Math.min(child.traits.childEnergy, t.childEnergy);
     child.heading = wrapAngle(a.heading + rand(-1.2, 1.2));
     this.births[child.kind]++;
@@ -376,16 +364,14 @@ class Simulation {
   driftZones() {
     for (const z of this.zones) {
       z.x += z.vx; z.y += z.vy;
-      if (z.x < 0.1 * this.W || z.x > 0.9 * this.W) z.vx *= -1;
-      if (z.y < 0.1 * this.H || z.y > 0.9 * this.H) z.vy *= -1;
-      z.x = clamp(z.x, 0, this.W); z.y = clamp(z.y, 0, this.H);
+      z.x = wrap(z.x, this.W); z.y = wrap(z.y, this.H);
     }
   }
 
   step() {
     this.ticks++;
     this.driftZones();
-    this.plantAcc += this.plantRate / TICKS_PER_SEC;
+    this.plantAcc += this.plantRate * this.area / TICKS_PER_SEC;
     while (this.plantAcc >= 1) { this.spawnPlant(); this.plantAcc--; }
 
     this.plantGrid.build(this.plants);
@@ -415,7 +401,7 @@ class Simulation {
       for (let k = 0; k < DIET_GROUPS.length; k++) {
         if (this.counts[k] < EVOLVE.groupFloor) this.reseed(k);
       }
-      if (agents.length < EVOLVE.minPop) this.reseed(-1);
+      if (agents.length < EVOLVE.minPop * this.area) this.reseed(-1);
     }
     // Species populations for the chart, as flat [id, count, id, count, ...] samples.
     if (this.ticks % 30 === 0) {

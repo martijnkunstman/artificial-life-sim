@@ -75,15 +75,21 @@ class Renderer {
     return { scale, ox: (cam.viewW / 2 - cam.x * cam.zoom) * dpr, oy: (cam.viewH / 2 - cam.y * cam.zoom) * dpr };
   }
 
-  // Outside the world is darker than the world's own backdrop; alpha below 1 leaves fading trails.
+  // The world's backdrop, repeated across the seams wherever the view reaches past them. When the whole
+  // world is in view along an axis, it is shown once, with the darker surroundings beside it.
+  // Alpha below 1 leaves fading trails.
   paintBackdrop(alpha) {
-    const ctx = this.ctx, sim = this.sim, { scale, ox, oy } = this.view();
+    const ctx = this.ctx, sim = this.sim, cam = this.camera, { scale, ox, oy } = this.view(), b = cam.bounds(0);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = alpha;
     ctx.fillStyle = '#010205';
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     ctx.setTransform(scale, 0, 0, scale, ox, oy);
-    ctx.drawImage(this.bg, 0, 0, sim.W, sim.H);
+    const kx0 = cam.coversX ? 0 : Math.floor(b.x0 / sim.W), kx1 = cam.coversX ? 0 : Math.floor(b.x1 / sim.W);
+    const ky0 = cam.coversY ? 0 : Math.floor(b.y0 / sim.H), ky1 = cam.coversY ? 0 : Math.floor(b.y1 / sim.H);
+    for (let ky = ky0; ky <= ky1; ky++) {
+      for (let kx = kx0; kx <= kx1; kx++) ctx.drawImage(this.bg, kx * sim.W, ky * sim.H, sim.W, sim.H);
+    }
     ctx.globalAlpha = 1;
   }
 
@@ -142,20 +148,17 @@ class Renderer {
     this.paintBackdrop(cam.moved ? 1 : 0.3);
     cam.moved = false;
     const { scale, ox, oy } = this.view(), b = cam.bounds();
+    // Everything is drawn at its copy nearest the view's centre, so nothing jumps at a seam.
     const inView = (x, y) => x > b.x0 && x < b.x1 && y > b.y0 && y < b.y1;
-
-    // The world's edge.
     ctx.setTransform(scale, 0, 0, scale, ox, oy);
-    ctx.strokeStyle = 'rgba(140, 182, 224, 0.25)';
-    ctx.lineWidth = 1 / cam.zoom;
-    ctx.strokeRect(0, 0, sim.W, sim.H);
 
     // Plants fade in as they sprout.
     const ps = this.plantSprite, half = ps.size / 2;
     for (const p of sim.plants) {
-      if (!inView(p.pos.x, p.pos.y)) continue;
+      const x = cam.nearX(p.pos.x), y = cam.nearY(p.pos.y);
+      if (!inView(x, y)) continue;
       ctx.globalAlpha = Math.min(1, (sim.ticks - p.born) / 40 + 0.15);
-      ctx.drawImage(ps.img, p.pos.x - half, p.pos.y - half, ps.size, ps.size);
+      ctx.drawImage(ps.img, x - half, y - half, ps.size, ps.size);
     }
     ctx.globalAlpha = 1;
 
@@ -163,12 +166,13 @@ class Renderer {
     // colour follows either the species or the diet.
     const bySpecies = this.colorBy === 'species';
     for (const a of sim.agents) {
-      if (!inView(a.pos.x, a.pos.y)) continue;
+      const x = cam.nearX(a.pos.x), y = cam.nearY(a.pos.y);
+      if (!inView(x, y)) continue;
       const spr = bySpecies ? this.speciesSprite(a.species, a.kind) : this.dietSprites[a.bucket], L = spr.size;
       const body = a.traits.radius / DIET_SPRITE_RADIUS;
       const s = (0.75 + 0.45 * a.energy / a.traits.maxEnergy) * body * scale;
       const c = Math.cos(a.heading) * s, sn = Math.sin(a.heading) * s;
-      ctx.setTransform(c, sn, -sn, c, a.pos.x * scale + ox, a.pos.y * scale + oy);
+      ctx.setTransform(c, sn, -sn, c, x * scale + ox, y * scale + oy);
       ctx.drawImage(spr.img, -L / 2, -L / 2, L, L);
       this.drawParts(ctx, a, bySpecies ? a.species.color : a.color);
     }
@@ -178,11 +182,11 @@ class Renderer {
     ctx.globalCompositeOperation = 'lighter';
     const pool = sim.particles.pool;
     for (let i = 0; i < sim.particles.count; i++) {
-      const p = pool[i];
-      if (!inView(p.x, p.y)) continue;
+      const p = pool[i], x = cam.nearX(p.x), y = cam.nearY(p.y);
+      if (!inView(x, y)) continue;
       ctx.globalAlpha = p.life / p.span;
       ctx.fillStyle = p.color;
-      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+      ctx.fillRect(x - p.size / 2, y - p.size / 2, p.size, p.size);
     }
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
@@ -262,7 +266,7 @@ class Renderer {
 
   // Selection UI lives on its own fully cleared layer so it never smears into the trails.
   drawOverlay() {
-    const o = this.octx, sim = this.sim, a = sim.selected;
+    const o = this.octx, sim = this.sim, a = sim.selected, cam = this.camera;
     o.setTransform(1, 0, 0, 1, 0, 0);
     o.clearRect(0, 0, this.overlay.width, this.overlay.height);
     const { scale, ox, oy } = this.view(), px = 1 / this.camera.zoom; // one screen pixel, in world units
@@ -276,15 +280,15 @@ class Renderer {
       o.beginPath();
       for (const m of sim.agents) {
         if (m.species !== f) continue;
-        const r = m.traits.radius * 2.2 + 3;
-        o.moveTo(m.pos.x + r, m.pos.y);
-        o.arc(m.pos.x, m.pos.y, r, 0, TAU);
+        const r = m.traits.radius * 2.2 + 3, mx = cam.nearX(m.pos.x), my = cam.nearY(m.pos.y);
+        o.moveTo(mx + r, my);
+        o.arc(mx, my, r, 0, TAU);
       }
       o.stroke();
       o.globalAlpha = 1;
     }
     if (!a || a.dead) return;
-    const x = a.pos.x, y = a.pos.y;
+    const x = cam.nearX(a.pos.x), y = cam.nearY(a.pos.y);
     // What the creature can see: one wedge per eye.
     o.lineWidth = px;
     for (const eye of a.traits.eyes) {
@@ -301,7 +305,8 @@ class Renderer {
     const link = (t, color) => {
       if (!t || t.dead || t.eaten) return;
       o.strokeStyle = color; o.globalAlpha = 0.55;
-      o.beginPath(); o.moveTo(x, y); o.lineTo(t.pos.x, t.pos.y); o.stroke();
+      // To the target the short way round, which may run across the seam.
+      o.beginPath(); o.moveTo(x, y); o.lineTo(x + wrapDelta(t.pos.x - a.pos.x, sim.W), y + wrapDelta(t.pos.y - a.pos.y, sim.H)); o.stroke();
       o.globalAlpha = 1;
     };
     link(a.seePlant, sim.plantColor);

@@ -55,6 +55,11 @@ class AutoSave {
     let data;
     try {
       data = JSON.parse(raw);
+      // A new version always starts fresh: a world kept by any other version is dropped, not converted.
+      if (data.world.version !== VERSION) {
+        AutoSave.remove(AUTOSAVE_KEY);
+        return { resumed: false, reason: `This is a new version (${VERSION} UTC), so a fresh world has started. Your previous world was kept by version ${data.world.version || 'unknown'} and was removed.` };
+      }
       if (requestedSeed && data.world.seed !== requestedSeed) return { resumed: false };
       this.sim.load(data.world);
     } catch (err) {

@@ -62,7 +62,7 @@ class UIController {
   bindSliders() {
     const sim = this.sim;
     this.sliders = [
-      { id: 'plantRate', key: 'plantRate', fmt: v => `${v} /s`, apply: v => { sim.plantRate = v; } },
+      { id: 'plantRate', key: 'plantRate', fmt: v => `${v} /s per 1000²`, apply: v => { sim.plantRate = v; } },
       { id: 'drain', key: 'drainMult', fmt: v => `${v.toFixed(2)}×`, apply: v => { sim.drainMult = v; } },
       { id: 'mutation', key: 'mutationRate', fmt: v => `${Math.round(v * 100)}% of weights`, apply: v => { sim.mutationRate = v; } },
       { id: 'sensor', key: 'sensorRange', fmt: v => `${v} px`, apply: v => sim.setSensorRange(v) },
@@ -95,6 +95,8 @@ class UIController {
       else this.$('seed').value = sim.seed;
     });
     this.showSeed();
+    this.$('version').textContent = VERSION;
+    this.$('panel').title = `Neural Tidepool, version ${VERSION} UTC`;
 
     this.colorButtons = [...document.querySelectorAll('[data-color]')];
     for (const b of this.colorButtons) b.addEventListener('click', () => this.setColorBy(b.dataset.color));
@@ -200,9 +202,7 @@ class UIController {
       this.lastStats = 0;
       this.tree.draw();
       this.progress.toggle(this.progress.open);
-      const sized = data.width === sim.W && data.height === sim.H;
-      this.setStatus(`Loaded ${file.name}: ${sim.agents.length} creatures at gen ${sim.maxGen}.` +
-        (sized ? '' : ` It was saved at ${data.width}×${data.height}, so it was stretched to fit this ${sim.W}×${sim.H} world and the run will not replay exactly.`));
+      this.setStatus(`Loaded ${file.name}: ${sim.agents.length} creatures at gen ${sim.maxGen}.`);
     } catch (err) {
       this.setStatus(err instanceof SyntaxError ? `${file.name} is not valid JSON.` : err.message);
     }

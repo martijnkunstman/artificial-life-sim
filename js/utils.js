@@ -13,6 +13,11 @@ function gauss() {
   while (v === 0) v = rng.next();
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(TAU * v);
 }
+// The world wraps around: leaving one side enters the opposite one.
+// wrap() brings a coordinate back into [0, size); wrapDelta() is the shortest signed difference
+// between two coordinates, which may run across the seam.
+const wrap = (v, size) => v - size * Math.floor(v / size);
+const wrapDelta = (d, size) => d - size * Math.round(d / size);
 function wrapAngle(a) {
   while (a > Math.PI) a -= TAU;
   while (a < -Math.PI) a += TAU;

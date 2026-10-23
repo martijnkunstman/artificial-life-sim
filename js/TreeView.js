@@ -40,6 +40,7 @@ class TreeView {
 
   toggle(open = !this.open) {
     this.panel.hidden = !open;
+    document.body.classList.toggle('tree-open', open); // the progress window makes room below it
     this.ui.$('tree-open').setAttribute('aria-expanded', String(open));
     if (open) this.draw();
   }

@@ -1,9 +1,10 @@
 'use strict';
 
-/* ---------- Camera: which part of the fixed square world the screen shows, and how closely ---------- */
+/* ---------- Camera: which part of the wrapping world the screen shows, and how closely ---------- */
 // (x, y) is the world point at the centre of the screen; zoom is screen pixels per world pixel.
-// "Fit" is the zoom at which the whole world just fits on screen; zoom can go a little below it
-// (to see the world's edge with room around it) and up to MAX_ZOOM.
+// "Fit" is the zoom at which the whole world just fits on screen, the furthest out the view goes.
+// The world wraps around, so the view pans on forever: x and y stay within the world, and the
+// renderer draws everything at its copy nearest the centre of the view.
 const MAX_ZOOM = 5;
 
 class Camera {
@@ -21,7 +22,7 @@ class Camera {
   }
 
   get fitZoom() { return Math.min(this.viewW / this.worldW, this.viewH / this.worldH); }
-  get minZoom() { return this.fitZoom * 0.8; }
+  get minZoom() { return this.fitZoom; }
 
   setView(w, h) {
     this.viewW = w;
@@ -42,15 +43,22 @@ class Camera {
     this.set(this.worldW / 2, this.worldH / 2, this.fitZoom);
   }
 
-  // Keep the zoom in range and the world on screen: when the world is smaller than the screen along
-  // an axis it is centred on that axis, otherwise the view may not slide past the world's edge.
+  // Keep the zoom in range. Along an axis where the whole world is on screen, the view is centred;
+  // otherwise it may pan freely, wrapping around.
   set(x, y, zoom) {
     this.zoom = clamp(zoom, this.minZoom, MAX_ZOOM);
-    const halfW = this.viewW / 2 / this.zoom, halfH = this.viewH / 2 / this.zoom;
-    this.x = this.worldW <= 2 * halfW ? this.worldW / 2 : clamp(x, halfW, this.worldW - halfW);
-    this.y = this.worldH <= 2 * halfH ? this.worldH / 2 : clamp(y, halfH, this.worldH - halfH);
+    this.x = this.coversX ? this.worldW / 2 : wrap(x, this.worldW);
+    this.y = this.coversY ? this.worldH / 2 : wrap(y, this.worldH);
     this.moved = true;
   }
+
+  // Whether the screen shows the world's whole width (or height); tiny tolerance for rounding.
+  get coversX() { return this.viewW / this.zoom >= this.worldW - 0.5; }
+  get coversY() { return this.viewH / this.zoom >= this.worldH - 0.5; }
+
+  // The copy of a world point nearest the view's centre (in the same unwrapped space as bounds()).
+  nearX(x) { return this.x + wrapDelta(x - this.x, this.worldW); }
+  nearY(y) { return this.y + wrapDelta(y - this.y, this.worldH); }
 
   // Zoom by a factor, keeping the world point under the screen point (sx, sy) where it is.
   zoomAt(factor, sx = this.viewW / 2, sy = this.viewH / 2) {
@@ -80,9 +88,12 @@ class Camera {
     const f = this.follow;
     if (!f) return;
     if (f.dead) { this.follow = null; this.lostFollow = true; return; }
-    if (Math.abs(f.pos.x - this.x) > 0.05 || Math.abs(f.pos.y - this.y) > 0.05) this.set(f.pos.x, f.pos.y, this.zoom);
+    if (Math.abs(wrapDelta(f.pos.x - this.x, this.worldW)) > 0.05 || Math.abs(wrapDelta(f.pos.y - this.y, this.worldH)) > 0.05) {
+      this.set(f.pos.x, f.pos.y, this.zoom);
+    }
   }
 
+  // Screen to world; the result may lie outside the world (a copy across the seam), so wrap it to use it.
   toWorld(sx, sy) {
     return [(sx - this.viewW / 2) / this.zoom + this.x, (sy - this.viewH / 2) / this.zoom + this.y];
   }

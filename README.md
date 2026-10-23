@@ -38,18 +38,26 @@ Plants (yellow) grow mostly around a few fertile zones that drift slowly across 
 
 ## The world, zoom and minimap
 
-The world is a fixed square, 1000 × 1000 pixels, whatever the size of the window. That is the same area as the 1280 × 800 world the balance was tuned on, so plants and prey are as dense as before. Larger squares were tried and hurt the hunters: over 3 worlds of 15 sim-minutes, meat-eaters had 349 births of their own at 1000 × 1000, but only 91 at 1200 × 1200 and 88 at 1400 × 1400, because prey is spread thinner.
+The world is a borderless square, 2000 × 2000 pixels, whatever the size of the window. It has no edges: it wraps around, so a creature swimming off one side comes back in on the opposite side, like the screen in Asteroids. Topologically it is a torus. Everything follows from that:
+
+- **Movement.** Positions wrap around. There are no walls to bump into and no penalty for hitting one.
+- **Senses.** Creatures have no wall sensors any more (there is nothing to sense). Sight, eye cones, the direction to a target and the reach of a bite all measure the short way round, so a creature near one edge sees and eats what is just across the seam. The neighbour grid that speeds up sensing wraps too, and its cells divide the world exactly, so the cells beside the seam are as large as the rest.
+- **Plants, births and fertile zones.** Plants that would grow past an edge grow on the other side, newborns can be born across the seam, and fertile zones drift on through the edges instead of bouncing back.
+- **Density.** The world is four times the area the balance was tuned on (1000 × 1000). So plant growth, the plant cap, the number of fertile zones, the founders and the population limits are all set per 1000 × 1000 and scale with the area: 12 fertile zones, up to 3,600 plants and 2,080 creatures, 360 founders. Plants, prey and hunters are as dense as before; there are just four times as many of them. The *Plant spawn rate* slider is per 1000 × 1000 too.
+- **Exams** (see Progress) run in a small wrapping arena as well.
+
+**Predators** do much better in this world than in the earlier walled 1000 × 1000 one. See *Balance* below for the numbers.
 
 The view opens with the whole world fitted to the window. From there:
 
-- **Zoom** with the mouse wheel or trackpad, a two-finger pinch, the `+` and `−` buttons under the minimap, or the `+` and `-` keys. Zoom goes from a little below *whole world* up to 5× closer. The number between the buttons is the zoom relative to the whole world; click it (or press `0`) to see the whole world again.
-- **Pan** by dragging the world.
+- **Zoom** with the mouse wheel or trackpad, a two-finger pinch, the `+` and `−` buttons under the minimap, or the `+` and `-` keys. Zoom goes from *whole world* up to 5× closer. The number between the buttons is the zoom relative to the whole world; click it (or press `0`) to see the whole world again.
+- **Pan** by dragging the world. Since the world wraps, the view pans on forever, and nothing jumps at a seam: everything is drawn at its copy nearest the middle of the view.
 - **Follow** a creature by double-clicking it, or by inspecting it and pressing *Follow* (or `F`). The view keeps it centred, zooming in if needed; if it dies, the view follows whichever creature the inspector moves on to. Dragging stops following.
-- **The minimap** (top right) shows the whole world: plants as faint specks, creatures as dots in their current colours (species or diet), the inspected creature circled and the part on screen outlined. Click or drag on it to move the view there.
+- **The minimap** (top right) shows the whole world: plants as faint specks, creatures as dots in their current colours (species or diet), the inspected creature circled and the part on screen outlined. An outline running off one side of the minimap continues on the opposite side. Click or drag on it to move the view there.
 
 Fading trails are drawn only while the view holds still; after a pan or zoom the screen is repainted fully so trails never smear. Only what is on screen is drawn, so zooming in also makes drawing cheaper.
 
-The founders start in three loose diet clusters. A diet group that falls below 3 creatures, or a world below 30, is topped up with mutated copies of the best genomes so far, so a lineage can recover from an early wipe-out.
+The founders start in three loose diet clusters. A diet group that falls below 3 creatures, or a world below 30 per 1000 × 1000 (120 in all), is topped up with mutated copies of the best genomes so far, so a lineage can recover from an early wipe-out.
 
 ## Species and the family tree
 
@@ -109,13 +117,12 @@ Foraging improves clearly and in every world. Meat-eaters learn to hunt in most 
 
 ## How a creature thinks
 
-Every creature has a feedforward network with 14 inputs, one hidden layer of 12 neurons (tanh) and 4 outputs (sigmoid). The network controls all movement. There are no hardcoded steering rules.
+Every creature has a feedforward network with 11 inputs, one hidden layer of 12 neurons (tanh) and 4 outputs (sigmoid). The network controls all movement. There are no hardcoded steering rules.
 
 **Inputs**
 
 - Direction and closeness of the nearest plant, nearest threat and nearest prey that its eyes can see
 - The size of that threat and that prey, relative to its own body
-- Three wall rays: straight ahead, ahead-left and ahead-right
 - Its own energy and speed, and how much longer it is still digesting a kill
 
 **Outputs**
@@ -126,7 +133,7 @@ Whether a creature flees threats or chases prey depends entirely on what its net
 
 ## Energy, reproduction and evolution
 
-- Creatures lose energy every tick just by existing, lose more the faster they move, and pay a small penalty for hitting a wall.
+- Creatures lose energy every tick just by existing, and lose more the faster they move.
 - Eating restores energy. After a kill, a hunter must digest for a short while before it can eat prey again.
 - A creature that passes its energy threshold splits off one offspring. The child gets a copy of the parent's network with some weights randomly changed (the Mutation rate slider sets how many). Its body mutates too, at half that rate, because body changes are more drastic.
 - A creature dies when its energy reaches zero, when it is eaten, or when it reaches old age.
@@ -136,14 +143,14 @@ Whether a creature flees threats or chases prey depends entirely on what its net
 | Control | What it does |
 | --- | --- |
 | Pause, 1x, 2x, 5x, Max | Time scale. Max runs as many steps as fit in each frame. |
-| Plant spawn rate | New plants per second |
+| Plant spawn rate | New plants per second, per 1000 × 1000 of world (four times that over the whole world) |
 | Energy drain | Multiplier on all energy costs |
 | Mutation rate | Share of weights (and, at half rate, body genes and parts) that change in each offspring |
 | Sensor range | Baseline sight in pixels; each eye's reach multiplies it |
 | Seed, Replay seed | Shows the current world's seed; type one and press Replay seed to start that world |
 | New world | Starts a fresh world with a new random seed |
 | Save world | Downloads the whole world (creatures, brains, plants, statistics, settings) as a JSON file |
-| Load world | Opens a saved world and continues it exactly where it left off |
+| Load world | Opens a world saved by this version and continues it exactly where it left off |
 | Keep progress in this browser | On by default: the world is kept in this browser and resumed on your next visit. Turning it off removes the kept world. |
 | Species list | Click a species to highlight its members on the map; click again to stop |
 | Family tree | Opens the family tree of species |
@@ -158,13 +165,15 @@ Keyboard: `Space` pauses and resumes, `1` to `5` pick a speed, `T` opens or clos
 
 ## Seeds and saved worlds
 
-Saved worlds include the species and the family tree. Worlds saved before species existed still load: their creatures are grouped into species by body when they load, with a fresh family tree.
+**Version.** The panel shows the version: the date and time (UTC) of the release, such as `2026-10-23 23:20`. A saved world, kept in the browser or saved as a file, only opens in the version that saved it. Older worlds are not converted: when a new version opens and finds a world kept by an earlier one, it removes it and starts fresh, and the panel says so. Loading a file from another version is refused with a message. The version is `VERSION` in `js/config.js` and is set anew with every change.
+
+Saved worlds include the species, the family tree and the exam record.
 
 Every rule in the simulation draws from one seeded random generator (`js/Random.js`). The same seed and settings therefore replay the same world, tick for tick, whatever the window size. The seed is shown in the panel and kept in the address, so `index.html?seed=4242` reopens world 4242. Particles are purely visual and use their own randomness, so drawing never changes a run.
 
 **Progress in this browser.** The current world is also kept in this browser's localStorage, every 30 seconds and whenever you switch away from or close the tab. Opening the page again resumes it, including its settings, unless the address asks for a different seed (`?seed=`), which starts that world instead. A long run takes roughly 0.5 to 1 MB; if the browser refuses the space, the panel says so and you can still use Save world. Storage stays in this browser on this device only.
 
-A saved world also stores the generator's position, so loading it continues exactly as if it had never stopped. Worlds saved before the world had a fixed size were as big as the window they ran in; they load stretched to fill the 1000 × 1000 world, with creatures, plants and fertile zones keeping their layout, and from then on no longer replay exactly. The panel says so.
+A saved world also stores the generator's position, so loading it continues exactly as if it had never stopped.
 
 ## Headless balance runner
 
@@ -181,7 +190,7 @@ Options:
 | `--seeds N` | 10 | Number of seeds to run |
 | `--seed-start S` | 1 | First seed; seeds run S, S+1, … |
 | `--minutes M` | 10 | Sim-minutes per run (60 ticks per second) |
-| `--size WxH` | 1000x1000 | World size |
+| `--size WxH` | 2000x2000 | World size (populations and plant growth scale with its area) |
 | `--set key=value` | | Override a setting, such as `plantRate=20`, `EVOLVE.dietGap=0.15` or `SPECIES.threshold=2`; repeatable |
 | `--json` | | Print full results as JSON |
 
@@ -231,7 +240,7 @@ The scripts are loaded as ordinary scripts in a fixed order rather than as ES mo
 - `SPECIES` in `js/config.js` holds the species threshold, the distance weights and how long extinct species stay in the tree. `Genome.distance()` in `js/Genome.js` computes the distance.
 - `Genome.express()` in `js/Genome.js` turns genes, parts and these values into a creature's traits; each part's mass and upkeep are set there.
 
-The defaults were chosen with the headless runner, in two rounds. The numbers in this section, and in the species and exam results above, were measured when the world was 1280 × 800; add `--size 1280x800` to the commands to reproduce them exactly.
+The defaults were chosen with the headless runner. The first two rounds, and the species and exam results above, were measured in earlier versions, when the world was a walled 1280 × 800 rectangle and creatures had wall sensors; the current code no longer reproduces them exactly (the git history does).
 
 **Before body parts.** At first, meat-eaters thrived in 0 of 10 seeds (10 sim-minutes each) and survived only on top-ups: 143 births of their own against 343 top-ups. Instrumenting the runs showed why. Hunters saw prey 77% of the time but starved after about 17 seconds with roughly one kill each, because they were no faster than their prey and had too little starting energy to learn to hunt before dying. Plant-eaters also escaped by evolving larger bodies. The fix combined a speed bonus and better-provisioned young for meat-leaning bodies, richer meat, a cheaper hunter metabolism, a looser size limit and a digestion curve that favours specialists. That got meat-eaters thriving in 4 of 8 seeds (20 sim-minutes each), with 1,078 births against 202 top-ups.
 
@@ -250,6 +259,16 @@ node tools/headless.js --seeds 8 --minutes 20
 ```
 
 **Species.** Tracking species changes nothing about how a world plays out, so the numbers above still hold. In the same 8 runs, each world ended with 5 to 12 living species (7.8 on average). Of those, 2.5 had at least 5 members, and the largest averaged 44 members. About 270 species were founded per 20-minute run, most of them newborns or top-ups that died before breeding. The threshold of 1.5 was picked by comparing 1, 1.5 and 2 on seeds 2 and 3 over 15 sim-minutes. At 1, about twice as many species were founded (286 against 140 on seed 2), mostly one-member offshoots. At 2, only 30 to 70 were founded and the founding plant species never split in 15 minutes, so the tree barely branched.
+
+**The wrapping 2000 × 2000 world.** Removing the walls and quadrupling the area (with every density kept the same) helped predators a lot without changing a single hunting rule. Over 8 worlds of 20 sim-minutes (`node tools/headless.js --seeds 8 --minutes 20`), counting the second half of each run:
+
+| Group | Thriving | Own births vs top-ups | Average population per world |
+| --- | --- | --- | --- |
+| Plant-eaters | 8 of 8 worlds | 94,564 vs 5 | 139 to 355 |
+| Meat-eaters | 7 of 8 worlds | 8,174 vs 64 | 5 to 162 |
+| Mixed diet | 0 of 8 worlds | 183 vs 717 | 3 to 13 |
+
+In the walled world, meat-eaters thrived in about 3 of 8. Two things changed for them: prey can no longer hide in corners or along walls, and a world four times as large rarely loses all its hunters to one local crash, so a group that dies back in one region keeps breeding in another. Hunter numbers still vary a lot from world to world, from a handful to over 150. The mixed diet is still the weak niche, living almost entirely on top-ups.
 
 ## Earlier version
 

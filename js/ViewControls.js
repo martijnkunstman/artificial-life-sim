@@ -45,10 +45,10 @@ class ViewControls {
   }
 
   pick(sx, sy) {
-    const [wx, wy] = this.cam.toWorld(sx, sy), reach = 28 / Math.max(1, this.cam.zoom);
+    const [wx, wy] = this.cam.toWorld(sx, sy), reach = 28 / Math.max(1, this.cam.zoom), sim = this.sim;
     let best = null, bd = reach * reach;
-    for (const a of this.sim.agents) {
-      const dx = a.pos.x - wx, dy = a.pos.y - wy, d2 = dx * dx + dy * dy;
+    for (const a of sim.agents) {
+      const dx = wrapDelta(a.pos.x - wx, sim.W), dy = wrapDelta(a.pos.y - wy, sim.H), d2 = dx * dx + dy * dy;
       if (d2 < bd) { bd = d2; best = a; }
     }
     return best;
@@ -161,14 +161,17 @@ class ViewControls {
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(a.pos.x * k, a.pos.y * k, 4, 0, TAU); ctx.stroke();
     }
-    // Outline of what the screen shows, clipped to the world.
-    const b = this.cam.bounds(0);
-    const x0 = Math.max(0, b.x0) * k, y0 = Math.max(0, b.y0) * k;
-    const x1 = Math.min(sim.W, b.x1) * k, y1 = Math.min(sim.H, b.y1) * k;
-    if (x1 - x0 < w - 1 || y1 - y0 < h - 1) {
+    // Outline of what the screen shows. The world wraps, so an outline running off one side of the map
+    // continues on the opposite side: it is drawn again shifted by the map's width and height.
+    const cam = this.cam, b = cam.bounds(0);
+    if (!cam.coversX || !cam.coversY) {
+      const x0 = cam.coversX ? 0 : b.x0 * k, x1 = cam.coversX ? w : b.x1 * k;
+      const y0 = cam.coversY ? 0 : b.y0 * k, y1 = cam.coversY ? h : b.y1 * k;
       ctx.strokeStyle = this.ui.col.pos;
       ctx.lineWidth = 1.5;
-      ctx.strokeRect(x0 + 0.75, y0 + 0.75, x1 - x0 - 1.5, y1 - y0 - 1.5);
+      for (const sy of [-h, 0, h]) {
+        for (const sx of [-w, 0, w]) ctx.strokeRect(x0 + sx + 0.75, y0 + sy + 0.75, x1 - x0 - 1.5, y1 - y0 - 1.5);
+      }
     }
     ctx.strokeStyle = this.ui.col.line;
     ctx.lineWidth = 1;

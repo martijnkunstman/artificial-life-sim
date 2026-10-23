@@ -381,3 +381,9 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   padding: 2px 4px;
 }
 .tree-head select option { background: #0b1522; }
+
+/* With the family tree open, the progress window (which sits below it on wide screens) gets shorter
+   so the two never overlap; its content scrolls. */
+@media (min-width: 721px) {
+  body.tree-open .progress-panel { max-height: calc(100vh - 44px - max(240px, calc(100vh - 500px)) - 12px); }
+}

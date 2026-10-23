@@ -77,7 +77,7 @@
     <section class="block">
       <div class="label">Environment</div>
       <div class="slider">
-        <div class="slider-top"><label for="plantRate">Plant spawn rate</label><output id="plantRate-out" for="plantRate">16 /s</output></div>
+        <div class="slider-top"><label for="plantRate">Plant spawn rate</label><output id="plantRate-out" for="plantRate">16 /s per 1000²</output></div>
         <input type="range" id="plantRate" min="0" max="60" step="1" value="16">
       </div>
       <div class="slider">
@@ -112,6 +112,7 @@
       <p class="note">The same seed replays the same world, as long as you don't change the sliders. Add <b>?seed=</b> to the address to open a specific seed.</p>
     </section>
 
+    <p class="note version">Version <b id="version"></b> UTC. Saved worlds only open in the version that saved them.</p>
     <span class="keys"><kbd>Space</kbd> pause · <kbd>1</kbd>–<kbd>5</kbd> speed · <kbd>T</kbd> family tree · <kbd>P</kbd> progress · <kbd>C</kbd> colours<br>Drag to pan · wheel or pinch to zoom · <kbd>+</kbd> <kbd>−</kbd> zoom · <kbd>0</kbd> whole world · double-click or <kbd>F</kbd> follows a creature</span>
   </div>
 </aside>

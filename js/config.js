@@ -57,6 +57,7 @@ const BODY = {
 };
 
 /* ---------- evolution and population rules ---------- */
+// Founders, minPop and cap are per 1000 x 1000 of world area (see AREA_UNIT) and scale with the world.
 const EVOLVE = {
   founders: [50, 22, 18], // starting creatures per diet group
   groupFloor: 3,     // a diet group below this is topped up from its own best genomes
@@ -93,21 +94,30 @@ const DIET_BUCKETS = 12;
 const DIET_SPRITE_RADIUS = 6;
 
 /* ---------- brain and world ---------- */
+// The world has no walls (it wraps around), so there are no wall sensors.
 const INPUT_LABELS = [
   'plant ∠', 'plant ●',
   'threat ∠', 'threat ●', 'threat size',
   'prey ∠', 'prey ●', 'prey size',
-  'wall ahead', 'wall left', 'wall right',
   'energy', 'digesting', 'speed',
 ];
 const OUTPUT_LABELS = ['turn L', 'turn R', 'accel', 'brake'];
 const BRAIN_SHAPE = [INPUT_LABELS.length, 12, OUTPUT_LABELS.length];
-const WORLD_SIZE = 1000; // the world is a fixed square, this many pixels wide and high (the same area the balance was tuned on)
+// The world is a borderless square that wraps around at its edges, this many pixels wide and high.
+const WORLD_SIZE = 2000;
+// Densities were tuned on 1000 x 1000. Plant growth, the plant cap, fertile zones, founders and
+// population limits are given per AREA_UNIT and scale with the world's area, so density stays the same.
+const AREA_UNIT = 1000 * 1000;
 const PLANT_RADIUS = 2.6;
-const PLANT_CAP = 900;
+const PLANT_CAP = 900;     // per AREA_UNIT
+const ZONES = 3;           // fertile zones per AREA_UNIT
+const ZONE_SPREAD = 180;   // how far plants spread around a fertile zone, in pixels
 
 /* ---------- saved worlds ---------- */
 const SAVE_FORMAT = 'neural-tidepool-world';
-const SAVE_VERSION = 3; // 3 added species; version 2 worlds are still read
+// The version is the date and time (UTC) of the release, shown in the panel. Set it anew with every
+// change: saved worlds (kept in the browser or as files) only open in the version that saved them,
+// so a new version always starts a fresh world.
+const VERSION = '2026-10-23 23:20';
 const AUTOSAVE_KEY = 'neural-tidepool:world';
 const AUTOSAVE_PREF_KEY = 'neural-tidepool:keep-progress';

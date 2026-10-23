@@ -13,13 +13,11 @@ class UIController {
       pos: cssVar('--accent'), neg: cssVar('--neg'), mono: cssVar('--mono'),
     };
     this.bindSpeed();
-    this.bindMode();
     this.bindSliders();
     this.bindMisc();
     this.spark = this.setupCanvas(this.$('spark'));
     this.diet = this.setupCanvas(this.$('diet'));
     this.brain = this.setupCanvas(this.$('brain'));
-    this.applyMode();
   }
 
   setupCanvas(el) {
@@ -37,31 +35,6 @@ class UIController {
     c.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     c.w = w; c.h = h;
     return true;
-  }
-
-  bindMode() {
-    this.modeButtons = [...document.querySelectorAll('[data-mode]')];
-    for (const b of this.modeButtons) {
-      b.addEventListener('click', () => {
-        if (b.dataset.mode === this.sim.mode) return;
-        this.sim.setMode(b.dataset.mode);
-        this.applyMode();
-      });
-    }
-  }
-
-  applyMode() {
-    const sim = this.sim, $ = this.$, evolving = sim.evolving;
-    for (const b of this.modeButtons) b.setAttribute('aria-pressed', String(b.dataset.mode === sim.mode));
-    const names = evolving ? DIET_GROUPS : SPECIES.map(s => s.name);
-    names.forEach((n, k) => { $('n' + k).textContent = n; });
-    $('pop-head').textContent = evolving ? 'Diet group' : 'Species';
-    $('diet-wrap').hidden = !evolving;
-    $('in-genes').hidden = !evolving;
-    $('mode-note').textContent = evolving
-      ? 'Every creature inherits body genes: size, speed, agility, sight and diet. Groups emerge from the diet gene; nothing is assigned. Switching resets the world.'
-      : 'Three fixed species with a hardcoded food chain. Only the brains evolve. Switching resets the world.';
-    this.lastStats = 0;
   }
 
   bindSpeed() {
@@ -141,7 +114,7 @@ class UIController {
       this.lastStats = now;
       this.updateStats();
       this.drawSpark();
-      if (this.sim.evolving) this.drawDiet();
+      this.drawDiet();
     }
     if (now - this.lastBrain > 80) { this.lastBrain = now; this.drawBrain(); }
   }
@@ -160,9 +133,7 @@ class UIController {
     $('mp').textContent = sim.plants.length;
     $('bp').textContent = sim.plantsSpawned.toLocaleString();
     $('st-gen').textContent = sim.maxGen;
-    $('reseed-note').innerHTML = sim.evolving
-      ? `Population over the last 150 s of sim time. Gen is the deepest living lineage. If fewer than ${EVOLVE.minPop} creatures remain, the world is topped up with mutated copies of the best genomes so far (<b>${sim.reseeds}</b> so far).`
-      : `Population over the last 150 s of sim time. Gen is the deepest living lineage. A species that drops below its floor is reseeded from mutated copies of its best past brains (<b>${sim.reseeds}</b> so far).`;
+    $('reseed-note').innerHTML = `Population over the last 150 s of sim time. Gen is the deepest living lineage. A diet group below ${EVOLVE.groupFloor}, or a world below ${EVOLVE.minPop}, is topped up with mutated copies of the best genomes so far (<b>${sim.reseeds}</b> so far).`;
     $('st-tps').textContent = sim.speed === 0 ? '0' : sim.tps.toLocaleString();
     const t = Math.floor(sim.ticks / TICKS_PER_SEC);
     const hh = Math.floor(t / 3600), mm = Math.floor(t / 60) % 60, ss = t % 60;
@@ -174,7 +145,6 @@ class UIController {
     const c = this.diet, sim = this.sim;
     const bins = new Array(24).fill(0), sum = { size: 0, speed: 0, turn: 0, sense: 0 };
     for (const a of sim.agents) {
-      if (!a.genome) continue;
       bins[Math.min(bins.length - 1, Math.floor(a.diet * bins.length))]++;
       for (const k in sum) sum[k] += a.genome.genes[k];
     }
@@ -219,7 +189,7 @@ class UIController {
     const x0 = w - (len - 1) * (w / (n - 1));
     for (let k = 0; k < 3; k++) {
       const s = hist[k];
-      ctx.strokeStyle = sim.colors[k];
+      ctx.strokeStyle = sim.groupColors[k];
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       for (let i = 0; i < len; i++) {
@@ -228,7 +198,7 @@ class UIController {
       }
       ctx.stroke();
       const ly = bottom - (s[len - 1] / max) * (bottom - top);
-      ctx.fillStyle = sim.colors[k];
+      ctx.fillStyle = sim.groupColors[k];
       ctx.beginPath(); ctx.arc(w - 2, ly, 2.2, 0, TAU); ctx.fill();
     }
   }
@@ -244,9 +214,7 @@ class UIController {
     $('in-name').textContent = a.traits.name;
     $('in-meta').textContent = `#${a.id} · gen ${a.gen}`;
     $('in-energy').style.width = `${Math.max(0, Math.min(1, a.energy / a.traits.maxEnergy)) * 100}%`;
-    if (a.genome) {
-      for (const k in GENE_LABELS) $('gn-' + k).textContent = a.genome.genes[k].toFixed(2);
-    }
+    for (const k in GENE_LABELS) $('gn-' + k).textContent = a.genome.genes[k].toFixed(2);
     $('in-age').textContent = `${Math.floor(a.age / TICKS_PER_SEC)} s`;
     $('in-meals').textContent = a.meals;
     $('in-kids').textContent = a.children;

@@ -195,8 +195,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   }
 }
 
-.seg.seg-2 { grid-template-columns: repeat(2, 1fr); }
-.seg[aria-label="World type"] button { padding: 9px 4px; }
 .diet-wrap { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
 #diet { width: 100%; height: 52px; display: block; }
 .diet-axis { display: flex; justify-content: space-between; font: 10px var(--mono); color: var(--muted); }

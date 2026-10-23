@@ -28,14 +28,7 @@
   </header>
 
   <div class="panel-body" id="panel-body">
-    <section class="block">
-      <div class="label">World</div>
-      <div class="seg seg-2" role="group" aria-label="World type">
-        <button id="mode-evolve" data-mode="evolve" aria-pressed="true">Evolving bodies</button>
-        <button id="mode-classic" data-mode="classic" aria-pressed="false">Classic species</button>
-      </div>
-      <p class="note" id="mode-note"></p>
-    </section>
+    <p class="note">Every creature inherits body genes: size, speed, agility, sight and diet. Diet groups emerge from the diet gene; nothing is assigned.</p>
 
     <section class="block">
       <div class="label">Time scale</div>
@@ -55,7 +48,7 @@
         <div><small>Ticks / s</small><b id="st-tps">60</b></div>
       </div>
       <div class="pop" role="table" aria-label="Population by species">
-        <div class="pop-row head" role="row"><span role="columnheader" id="pop-head">Diet group</span><span role="columnheader">Alive</span><span role="columnheader">Gen</span><span role="columnheader">Born</span></div>
+        <div class="pop-row head" role="row"><span role="columnheader" >Diet group</span><span role="columnheader">Alive</span><span role="columnheader">Gen</span><span role="columnheader">Born</span></div>
         <div class="pop-row" role="row" style="--c: var(--herb)"><span class="sp" role="cell"><i class="dot"></i><span id="n0">Plant-eaters</span></span><b id="c0" role="cell">0</b><span id="g0" role="cell">0</span><span id="b0" role="cell">0</span></div>
         <div class="pop-row" role="row" style="--c: var(--omni)"><span class="sp" role="cell"><i class="dot"></i><span id="n1">Mixed diet</span></span><b id="c1" role="cell">0</b><span id="g1" role="cell">0</span><span id="b1" role="cell">0</span></div>
         <div class="pop-row" role="row" style="--c: var(--carn)"><span class="sp" role="cell"><i class="dot"></i><span id="n2">Meat-eaters</span></span><b id="c2" role="cell">0</b><span id="g2" role="cell">0</span><span id="b2" role="cell">0</span></div>

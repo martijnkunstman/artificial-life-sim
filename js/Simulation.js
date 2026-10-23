@@ -5,7 +5,6 @@ class Simulation {
   constructor() {
     this.W = Math.max(320, window.innerWidth);
     this.H = Math.max(320, window.innerHeight);
-    this.mode = MODE_EVOLVE;
     this.plantRate = 16;
     this.drainMult = 1;
     this.mutationRate = 0.08;
@@ -14,7 +13,7 @@ class Simulation {
     this.agentGrid = new SpatialGrid();
     this.plantGrid = new SpatialGrid();
     this.particles = new ParticleSystem(2400);
-    this.colors = SPECIES.map(s => cssVar(s.colorVar));
+    this.groupColors = GROUP_COLOR_VARS.map(cssVar);
     this.plantColor = cssVar('--plant');
     this.renderer = null;
     this.ui = null;
@@ -23,13 +22,6 @@ class Simulation {
     this.tpsCount = 0;
     this.tpsTime = this.last;
     this.tps = 0;
-    this.reset();
-  }
-
-  get evolving() { return this.mode === MODE_EVOLVE; }
-
-  setMode(mode) {
-    this.mode = mode;
     this.reset();
   }
 
@@ -53,15 +45,9 @@ class Simulation {
       vx: rand(-0.25, 0.25), vy: rand(-0.25, 0.25),
     }));
     this.resizeGrids();
-    if (this.evolving) {
-      EVOLVE.founders.forEach((n, k) => {
-        for (let i = 0; i < n; i++) this.spawnAgent(k, null, 0, Genome.founder(k));
-      });
-    } else {
-      for (let k = 0; k < SPECIES.length; k++) {
-        for (let i = 0; i < SPECIES[k].initial; i++) this.spawnAgent(k, null, 0);
-      }
-    }
+    EVOLVE.founders.forEach((n, k) => {
+      for (let i = 0; i < n; i++) this.spawnAgent(Genome.founder(k), null, 0);
+    });
     for (let i = 0; i < 240; i++) this.spawnPlant();
     if (this.renderer) this.renderer.clear();
   }
@@ -80,15 +66,13 @@ class Simulation {
 
   resizeGrids() {
     // Cell size == the longest possible sight, so any neighbour in range is inside the 3x3 block around an agent.
-    const reach = this.evolving ? GENE_RANGES.sense[1] : 1;
-    const cell = Math.max(40, this.sensorRange * reach);
+    const cell = Math.max(40, this.sensorRange * GENE_RANGES.sense[1]);
     this.agentGrid.resize(this.W, this.H, cell);
     this.plantGrid.resize(this.W, this.H, cell);
   }
 
-  spawnAgent(kind, brain, gen, genome = null, x = rand(20, this.W - 20), y = rand(20, this.H - 20)) {
-    const a = new Agent(kind, x, y, brain, gen, genome);
-    a.color = genome ? dietColor(a.diet) : this.colors[a.kind];
+  spawnAgent(genome, brain, gen, x = rand(20, this.W - 20), y = rand(20, this.H - 20)) {
+    const a = new Agent(genome, x, y, brain, gen);
     this.agents.push(a);
     this.counts[a.kind]++;
     if (gen > this.maxGen) this.maxGen = gen;
@@ -122,10 +106,9 @@ class Simulation {
     return d >= r ? 0 : 1 - d / r;
   }
 
-  // Classic: a fixed food chain. Evolving: a hunter needs some meat digestion, a clearly more
-  // meat-leaning diet than its prey, and a body not much smaller than the prey's.
+  // No fixed food chain: a hunter needs some meat digestion, a clearly more meat-leaning diet
+  // than its prey, and a body not much smaller than the prey's.
   canEat(a, b) {
-    if (!this.evolving) return (PREY[a.kind] & (1 << b.kind)) !== 0;
     return a.traits.meatEff >= EVOLVE.minMeatEff
       && b.diet < a.diet - EVOLVE.dietGap
       && b.traits.radius <= a.traits.radius * EVOLVE.sizeRatio;
@@ -186,9 +169,7 @@ class Simulation {
       const rr = t.radius + q.traits.radius;
       if (a.pos.distSq(q.pos) < rr * rr) {
         const leftover = Math.max(0, q.energy);
-        a.gain(this.evolving
-          ? t.meatEff * (q.traits.bodyValue + leftover * 0.2)
-          : t.preyGain + leftover * 0.15);
+        a.gain(t.meatEff * (q.traits.bodyValue + leftover * 0.2));
         a.digest = t.digest;
         this.kill(q, true);
       }
@@ -216,15 +197,13 @@ class Simulation {
 
   reproduce(a) {
     const t = a.traits;
-    const full = this.evolving ? this.agents.length >= EVOLVE.cap
-      : this.counts[a.kind] >= t.cap || this.agents.length >= AGENT_CAP;
-    if (full) return;
+    if (this.agents.length >= EVOLVE.cap) return;
     a.energy -= t.reproCost;
     a.children++;
     const brain = a.brain.clone().mutate(this.mutationRate);
-    const genome = a.genome ? a.genome.clone().mutate(this.mutationRate * EVOLVE.bodyMutation) : null;
+    const genome = a.genome.clone().mutate(this.mutationRate * EVOLVE.bodyMutation);
     const back = a.heading + Math.PI;
-    const child = this.spawnAgent(a.kind, brain, a.gen + 1, genome,
+    const child = this.spawnAgent(genome, brain, a.gen + 1,
       clamp(a.pos.x + Math.cos(back) * t.radius * 2, 5, this.W - 5),
       clamp(a.pos.y + Math.sin(back) * t.radius * 2, 5, this.H - 5));
     child.energy = Math.min(child.traits.childEnergy, t.childEnergy);
@@ -233,18 +212,18 @@ class Simulation {
     this.particles.burst(child.pos.x, child.pos.y, child.color, 8, 1.2, 26, 1.2);
   }
 
-  // kind -1 (evolving mode only) draws from the best genomes of every diet group.
+  // Tops up one diet group from its best genomes; kind -1 draws from the best of every group.
   reseed(kind) {
     const list = kind < 0 ? this.fame.flat() : this.fame[kind];
     let brain = null, gen = 0;
-    let genome = this.evolving ? (kind < 0 ? Genome.random() : Genome.founder(kind)) : null;
+    let genome = kind < 0 ? Genome.random() : Genome.founder(kind);
     if (list.length) {
       const e = list[(Math.random() * list.length) | 0];
       brain = e.brain.clone().mutate(Math.max(this.mutationRate, 0.05));
-      if (e.genome) genome = e.genome.clone().mutate(0.2);
+      genome = e.genome.clone().mutate(0.2);
       gen = e.gen + 1;
     }
-    const a = this.spawnAgent(Math.max(0, kind), brain, gen, genome);
+    const a = this.spawnAgent(genome, brain, gen);
     this.reseeds++;
     this.particles.burst(a.pos.x, a.pos.y, a.color, 12, 1.5, 40, 1.4);
   }
@@ -288,11 +267,10 @@ class Simulation {
     plants.length = w;
 
     if (this.ticks % 45 === 0) {
-      for (let k = 0; k < 3; k++) {
-        const floor = this.evolving ? EVOLVE.groupFloor : SPECIES[k].minPop;
-        if (this.counts[k] < floor) this.reseed(k);
+      for (let k = 0; k < DIET_GROUPS.length; k++) {
+        if (this.counts[k] < EVOLVE.groupFloor) this.reseed(k);
       }
-      if (this.evolving && agents.length < EVOLVE.minPop) this.reseed(-1);
+      if (agents.length < EVOLVE.minPop) this.reseed(-1);
     }
     if (this.ticks % 30 === 0) {
       const h = this.history;

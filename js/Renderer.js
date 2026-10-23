@@ -2,7 +2,7 @@
 
 /* ---------- Renderer: glow baked into sprites with shadowBlur, trails via translucent fade ---------- */
 const SHAPES = [
-  // Herbivore: smooth teardrop
+  // Plant-eaters: smooth teardrop
   (g, r) => {
     const cx = -0.35 * r, tip = 1.7 * r, al = Math.acos(r / (tip - cx));
     g.beginPath();
@@ -10,7 +10,7 @@ const SHAPES = [
     g.arc(cx, 0, r, -al, al, true);
     g.closePath();
   },
-  // Omnivore: curved kite
+  // Mixed diet: curved kite
   (g, r) => {
     g.beginPath();
     g.moveTo(1.7 * r, 0);
@@ -19,7 +19,7 @@ const SHAPES = [
     g.quadraticCurveTo(0.2 * r, 1.5 * r, 1.7 * r, 0);
     g.closePath();
   },
-  // Carnivore: sharp notched arrow
+  // Meat-eaters: sharp notched arrow
   (g, r) => {
     g.beginPath();
     g.moveTo(2 * r, 0);
@@ -86,8 +86,7 @@ class Renderer {
   }
 
   buildSprites() {
-    this.sprites = SPECIES.map((s, k) => this.makeSprite(s.radius, this.sim.colors[k], SHAPES[k]));
-    // Evolving mode: one sprite per diet bucket, drawn at a base radius and scaled by each body's size.
+    // One sprite per diet bucket, drawn at a base radius and scaled by each body's size.
     this.dietSprites = Array.from({ length: DIET_BUCKETS }, (_, b) => {
       const d = b / (DIET_BUCKETS - 1);
       return this.makeSprite(DIET_SPRITE_RADIUS, dietColor(d), SHAPES[d < 1 / 3 ? 0 : d < 2 / 3 ? 1 : 2]);
@@ -120,8 +119,8 @@ class Renderer {
 
     // Agents, rotated to heading, scaled slightly by energy.
     for (const a of sim.agents) {
-      const spr = a.genome ? this.dietSprites[a.bucket] : this.sprites[a.kind], L = spr.size;
-      const body = a.genome ? a.traits.radius / DIET_SPRITE_RADIUS : 1;
+      const spr = this.dietSprites[a.bucket], L = spr.size;
+      const body = a.traits.radius / DIET_SPRITE_RADIUS;
       const s = (0.75 + 0.45 * a.energy / a.traits.maxEnergy) * body * dpr;
       const c = Math.cos(a.heading) * s, sn = Math.sin(a.heading) * s;
       ctx.setTransform(c, sn, -sn, c, a.pos.x * dpr, a.pos.y * dpr);

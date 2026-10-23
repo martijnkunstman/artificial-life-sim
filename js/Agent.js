@@ -2,15 +2,15 @@
 
 /* ---------- Agent: one creature, sensed by Simulation and steered by its NeuralNetwork ---------- */
 class Agent {
-  // Classic mode: traits come from the fixed SPECIES table. Evolving mode: traits are expressed from a Genome.
-  constructor(kind, x, y, brain = null, gen = 0, genome = null) {
+  // The body (traits) is expressed from the genome once at birth; the brain decides what to do with it.
+  constructor(genome, x, y, brain = null, gen = 0) {
     this.id = Agent.nextId++;
     this.genome = genome;
-    this.traits = genome ? genome.express() : SPECIES[kind];
-    this.kind = genome ? genome.kind : kind;
-    this.diet = genome ? genome.genes.diet : CLASSIC_DIET[kind];
+    this.traits = genome.express();
+    this.kind = genome.kind;
+    this.diet = genome.genes.diet;
     this.bucket = Math.round(this.diet * (DIET_BUCKETS - 1));
-    this.color = '#fff';
+    this.color = dietColor(this.diet);
     this.pos = new Vector(x, y);
     this.heading = rand(-Math.PI, Math.PI);
     this.speed = rand(0, this.traits.maxSpeed * 0.5);

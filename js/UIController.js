@@ -23,6 +23,7 @@ class UIController {
     this.stats = new Map(); // species id -> { n, diet, size } over its living members
     this.tree = new TreeView(this);
     this.progress = new ProgressView(this);
+    this.view = new ViewControls(this);
   }
 
   setupCanvas(el) {
@@ -132,6 +133,7 @@ class UIController {
 
     window.addEventListener('keydown', e => {
       if (e.target instanceof HTMLInputElement || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (this.view.key(e)) return;
       const map = { '1': 0, '2': 1, '3': 2, '4': 5, '5': 'max' };
       if (e.code === 'Space') { e.preventDefault(); this.setSpeed(sim.speed === 0 ? this.resumeSpeed : 0); }
       else if (e.key in map) this.setSpeed(map[e.key]);
@@ -140,14 +142,6 @@ class UIController {
       else if (e.key === 'c' || e.key === 'C') this.setColorBy(sim.renderer.colorBy === 'species' ? 'diet' : 'species');
     });
 
-    sim.renderer.canvas.addEventListener('click', e => {
-      let best = null, bd = 28 * 28;
-      for (const a of sim.agents) {
-        const dx = a.pos.x - e.clientX, dy = a.pos.y - e.clientY, d2 = dx * dx + dy * dy;
-        if (d2 < bd) { bd = d2; best = a; }
-      }
-      if (best) { sim.selected = best; sim.pinned = true; }
-    });
   }
 
   setColorBy(mode) {
@@ -208,7 +202,7 @@ class UIController {
       this.progress.toggle(this.progress.open);
       const sized = data.width === sim.W && data.height === sim.H;
       this.setStatus(`Loaded ${file.name}: ${sim.agents.length} creatures at gen ${sim.maxGen}.` +
-        (sized ? '' : ` It was saved at ${data.width}×${data.height}, so creatures outside this window were moved inside and the run will not replay exactly.`));
+        (sized ? '' : ` It was saved at ${data.width}×${data.height}, so it was stretched to fit this ${sim.W}×${sim.H} world and the run will not replay exactly.`));
     } catch (err) {
       this.setStatus(err instanceof SyntaxError ? `${file.name} is not valid JSON.` : err.message);
     }
@@ -249,6 +243,7 @@ class UIController {
     if (now - this.lastBrain > 80) { this.lastBrain = now; this.drawBrain(); }
     this.tree.frame(now);
     this.progress.frame(now);
+    this.view.frame(now);
   }
 
   updateStats() {

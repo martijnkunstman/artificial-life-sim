@@ -109,10 +109,10 @@
       </div>
       <label class="check" for="keep-progress"><input type="checkbox" id="keep-progress" checked> Keep progress in this browser</label>
       <p class="note" id="world-status" role="status"></p>
-      <p class="note">The same seed and window size replay the same world, as long as you don't change the sliders. Add <b>?seed=</b> to the address to open a specific seed.</p>
+      <p class="note">The same seed replays the same world, as long as you don't change the sliders. Add <b>?seed=</b> to the address to open a specific seed.</p>
     </section>
 
-    <span class="keys"><kbd>Space</kbd> pause · <kbd>1</kbd>–<kbd>5</kbd> speed · <kbd>T</kbd> family tree · <kbd>P</kbd> progress · <kbd>C</kbd> colours</span>
+    <span class="keys"><kbd>Space</kbd> pause · <kbd>1</kbd>–<kbd>5</kbd> speed · <kbd>T</kbd> family tree · <kbd>P</kbd> progress · <kbd>C</kbd> colours<br>Drag to pan · wheel or pinch to zoom · <kbd>+</kbd> <kbd>−</kbd> zoom · <kbd>0</kbd> whole world · double-click or <kbd>F</kbd> follows a creature</span>
   </div>
 </aside>
 
@@ -137,6 +137,16 @@
   <div class="insp-foot" id="in-parts"></div>
   <div class="insp-foot insp-species"><span id="in-species"></span><button class="link-btn" id="in-focus" aria-pressed="false">Highlight species</button></div>
   <div class="insp-foot" id="in-foot">Following the deepest lineage. Click any creature to inspect it.</div>
+</aside>
+
+<aside class="map-panel" id="map-panel" aria-label="Minimap and zoom">
+  <canvas id="minimap" aria-label="Minimap of the whole world; the outlined part is on screen. Click or drag to move the view."></canvas>
+  <div class="zoom-row" role="group" aria-label="Zoom">
+    <button class="icon-btn" id="zoom-out" title="Zoom out (−)" aria-label="Zoom out">−</button>
+    <button class="zoom-level" id="zoom-fit" title="Show the whole world (0)" aria-label="Show the whole world"><span id="zoom-level">1.0×</span></button>
+    <button class="icon-btn" id="zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
+    <button class="link-btn" id="zoom-follow" aria-pressed="false" title="Keep the inspected creature centred (F)">Follow</button>
+  </div>
 </aside>
 
 <aside class="tree-panel" id="tree-panel" aria-label="Family tree of species" hidden>
@@ -188,9 +198,11 @@
 <script src="js/ParticleSystem.js" defer></script>
 <script src="js/Simulation.js" defer></script>
 <script src="js/Progress.js" defer></script>
+<script src="js/Camera.js" defer></script>
 <script src="js/Renderer.js" defer></script>
 <script src="js/TreeView.js" defer></script>
 <script src="js/ProgressView.js" defer></script>
+<script src="js/ViewControls.js" defer></script>
 <script src="js/UIController.js" defer></script>
 <script src="js/AutoSave.js" defer></script>
 <script src="js/main.js" defer></script>

@@ -25,7 +25,7 @@ const GROUPS = ['plant', 'mixed', 'meat'];
 const SAMPLE_EVERY = 300; // ticks (5 s of sim time)
 
 function parseArgs(argv) {
-  const opts = { seeds: 10, minutes: 10, seedStart: 1, width: 1280, height: 800, set: [], json: false };
+  const opts = { seeds: 10, minutes: 10, seedStart: 1, width: null, height: null, set: [], json: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i], next = () => argv[++i];
     if (a === '--seeds') opts.seeds = Number(next());
@@ -61,6 +61,7 @@ function applySettings(context, sim, sets) {
 }
 
 function runSeed(context, opts, seed) {
+  if (!opts.width) opts.width = opts.height = vm.runInContext('WORLD_SIZE', context);
   const sim = vm.runInContext(`new Simulation({ width: ${opts.width}, height: ${opts.height}, seed: ${seed} })`, context);
   applySettings(context, sim, opts.set);
   if (opts.set.length) sim.reset(seed); // settings that shape the founders must apply before the world is built

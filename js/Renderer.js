@@ -1,6 +1,7 @@
 'use strict';
 
 /* ---------- Renderer: glow baked into sprites with shadowBlur, trails via translucent fade ---------- */
+// The canvas covers the window; the Camera decides which part of the fixed square world it shows.
 const SHAPES = [
   // Plant-eaters: smooth teardrop
   (g, r) => {
@@ -38,23 +39,26 @@ class Renderer {
     this.octx = overlay.getContext('2d');
     this.sim = sim;
     this.colorBy = 'species'; // or 'diet'
-    this.resize(sim.W, sim.H);
+    this.camera = new Camera(sim.W, sim.H);
+    this.buildBackground();
   }
 
+  // w and h are the window's size in CSS pixels.
   resize(w, h) {
-    this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
     for (const c of [this.canvas, this.overlay]) {
-      c.width = Math.max(1, Math.round(w * this.dpr));
-      c.height = Math.max(1, Math.round(h * this.dpr));
+      c.width = Math.max(1, Math.round(w * dpr));
+      c.height = Math.max(1, Math.round(h * dpr));
     }
-    this.buildBackground();
-    this.buildSprites();
+    if (dpr !== this.dpr) { this.dpr = dpr; this.buildSprites(); }
+    this.camera.setView(w, h);
     this.clear();
   }
 
+  // The world's backdrop, drawn once small and stretched over the world (a soft gradient scales well).
   buildBackground() {
     const c = document.createElement('canvas');
-    c.width = this.canvas.width; c.height = this.canvas.height;
+    c.width = c.height = 512;
     const g = c.getContext('2d');
     const grd = g.createRadialGradient(c.width * 0.62, c.height * 0.38, 0, c.width * 0.5, c.height * 0.5, Math.hypot(c.width, c.height) * 0.62);
     grd.addColorStop(0, '#0a1a2b');
@@ -65,8 +69,27 @@ class Renderer {
     this.bg = c;
   }
 
+  // Maps world coordinates to device pixels: device = world * scale + offset.
+  view() {
+    const cam = this.camera, dpr = this.dpr, scale = cam.zoom * dpr;
+    return { scale, ox: (cam.viewW / 2 - cam.x * cam.zoom) * dpr, oy: (cam.viewH / 2 - cam.y * cam.zoom) * dpr };
+  }
+
+  // Outside the world is darker than the world's own backdrop; alpha below 1 leaves fading trails.
+  paintBackdrop(alpha) {
+    const ctx = this.ctx, sim = this.sim, { scale, ox, oy } = this.view();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#010205';
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.setTransform(scale, 0, 0, scale, ox, oy);
+    ctx.drawImage(this.bg, 0, 0, sim.W, sim.H);
+    ctx.globalAlpha = 1;
+  }
+
+  // Baked at three times the device resolution, so sprites stay sharp when zoomed in.
   makeSprite(r, color, draw) {
-    const L = Math.ceil(r * 8), k = this.dpr * 2;
+    const L = Math.ceil(r * 8), k = this.dpr * 3;
     const c = document.createElement('canvas');
     c.width = c.height = Math.ceil(L * k);
     const g = c.getContext('2d');
@@ -108,23 +131,29 @@ class Renderer {
   }
 
   clear() {
-    const ctx = this.ctx;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.globalAlpha = 1;
-    ctx.drawImage(this.bg, 0, 0);
+    this.camera.moved = true;
   }
 
   draw() {
-    const ctx = this.ctx, sim = this.sim, dpr = this.dpr;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const ctx = this.ctx, sim = this.sim, cam = this.camera;
+    cam.update();
     ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 0.3;
-    ctx.drawImage(this.bg, 0, 0);
+    // Trails only make sense while the view holds still; after a pan or zoom, repaint fully.
+    this.paintBackdrop(cam.moved ? 1 : 0.3);
+    cam.moved = false;
+    const { scale, ox, oy } = this.view(), b = cam.bounds();
+    const inView = (x, y) => x > b.x0 && x < b.x1 && y > b.y0 && y < b.y1;
+
+    // The world's edge.
+    ctx.setTransform(scale, 0, 0, scale, ox, oy);
+    ctx.strokeStyle = 'rgba(140, 182, 224, 0.25)';
+    ctx.lineWidth = 1 / cam.zoom;
+    ctx.strokeRect(0, 0, sim.W, sim.H);
 
     // Plants fade in as they sprout.
     const ps = this.plantSprite, half = ps.size / 2;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     for (const p of sim.plants) {
+      if (!inView(p.pos.x, p.pos.y)) continue;
       ctx.globalAlpha = Math.min(1, (sim.ticks - p.born) / 40 + 0.15);
       ctx.drawImage(ps.img, p.pos.x - half, p.pos.y - half, ps.size, ps.size);
     }
@@ -134,21 +163,23 @@ class Renderer {
     // colour follows either the species or the diet.
     const bySpecies = this.colorBy === 'species';
     for (const a of sim.agents) {
+      if (!inView(a.pos.x, a.pos.y)) continue;
       const spr = bySpecies ? this.speciesSprite(a.species, a.kind) : this.dietSprites[a.bucket], L = spr.size;
       const body = a.traits.radius / DIET_SPRITE_RADIUS;
-      const s = (0.75 + 0.45 * a.energy / a.traits.maxEnergy) * body * dpr;
+      const s = (0.75 + 0.45 * a.energy / a.traits.maxEnergy) * body * scale;
       const c = Math.cos(a.heading) * s, sn = Math.sin(a.heading) * s;
-      ctx.setTransform(c, sn, -sn, c, a.pos.x * dpr, a.pos.y * dpr);
+      ctx.setTransform(c, sn, -sn, c, a.pos.x * scale + ox, a.pos.y * scale + oy);
       ctx.drawImage(spr.img, -L / 2, -L / 2, L, L);
       this.drawParts(ctx, a, bySpecies ? a.species.color : a.color);
     }
 
     // Particles
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.setTransform(scale, 0, 0, scale, ox, oy);
     ctx.globalCompositeOperation = 'lighter';
     const pool = sim.particles.pool;
     for (let i = 0; i < sim.particles.count; i++) {
       const p = pool[i];
+      if (!inView(p.x, p.y)) continue;
       ctx.globalAlpha = p.life / p.span;
       ctx.fillStyle = p.color;
       ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
@@ -234,12 +265,13 @@ class Renderer {
     const o = this.octx, sim = this.sim, a = sim.selected;
     o.setTransform(1, 0, 0, 1, 0, 0);
     o.clearRect(0, 0, this.overlay.width, this.overlay.height);
-    o.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    const { scale, ox, oy } = this.view(), px = 1 / this.camera.zoom; // one screen pixel, in world units
+    o.setTransform(scale, 0, 0, scale, ox, oy);
     // Every member of the species picked in the panel or the family tree.
     const f = sim.focus;
     if (f) {
       o.strokeStyle = f.color;
-      o.lineWidth = 1.2;
+      o.lineWidth = 1.2 * px;
       o.globalAlpha = 0.8;
       o.beginPath();
       for (const m of sim.agents) {
@@ -254,7 +286,7 @@ class Renderer {
     if (!a || a.dead) return;
     const x = a.pos.x, y = a.pos.y;
     // What the creature can see: one wedge per eye.
-    o.lineWidth = 1;
+    o.lineWidth = px;
     for (const eye of a.traits.eyes) {
       const mid = a.heading + eye.angle, r = sim.sensorRange * eye.reach;
       o.fillStyle = 'rgba(180, 215, 245, 0.05)';
@@ -276,7 +308,7 @@ class Renderer {
     if (a.seePrey) link(a.seePrey, a.seePrey.color);
     if (a.seePred) link(a.seePred, a.seePred.color);
     o.strokeStyle = a.color;
-    o.lineWidth = 1.5;
+    o.lineWidth = 1.5 * px;
     o.beginPath(); o.arc(x, y, a.traits.radius * 2.6, 0, TAU); o.stroke();
   }
 }

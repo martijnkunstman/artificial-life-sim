@@ -4,7 +4,7 @@
 class Simulation {
   // Nothing here touches the DOM, so the same class runs headless in Node (see tools/headless.js).
   // particles is optional: without it the world runs identically, just without visual effects.
-  constructor({ width = 1280, height = 800, seed = Random.newSeed(), particles = null, plantColor = '#e8dc74' } = {}) {
+  constructor({ width = WORLD_SIZE, height = WORLD_SIZE, seed = Random.newSeed(), particles = null, plantColor = '#e8dc74' } = {}) {
     this.W = width;
     this.H = height;
     this.plantRate = 16;
@@ -71,7 +71,7 @@ class Simulation {
   }
 
   // A complete snapshot: world, statistics, best-genome archive and the random generator's position,
-  // so a loaded world continues exactly where it was saved (when the window is the same size).
+  // so a loaded world continues exactly where it was saved (when it was saved at this world size).
   serialize() {
     return {
       format: SAVE_FORMAT, version: SAVE_VERSION,
@@ -128,7 +128,8 @@ class Simulation {
     if (this.particles) this.particles.clear();
     // Restore the generator last: rebuilding the agents above drew from it.
     rng.state = d.rngState >>> 0;
-    this.resize(this.W, this.H);
+    this.fitSaved(d.width, d.height);
+    this.resizeGrids();
     if (this.renderer) this.renderer.clear();
   }
 
@@ -144,12 +145,15 @@ class Simulation {
     }
   }
 
-  resize(w, h) {
-    this.W = w; this.H = h;
-    for (const a of this.agents) { a.pos.x = clamp(a.pos.x, 0, w); a.pos.y = clamp(a.pos.y, 0, h); }
-    this.plants = this.plants.filter(p => p.pos.x < w && p.pos.y < h);
-    for (const z of this.zones) { z.x = clamp(z.x, 0, w); z.y = clamp(z.y, 0, h); }
-    this.resizeGrids();
+  // Worlds saved at another size (before the world had a fixed size, it followed the window)
+  // are stretched to fill this world, so creatures and plants keep their layout.
+  fitSaved(w, h) {
+    if (w === this.W && h === this.H) return;
+    const sx = this.W / w, sy = this.H / h;
+    const fit = p => { p.x = clamp(p.x * sx, 0, this.W); p.y = clamp(p.y * sy, 0, this.H); };
+    for (const a of this.agents) fit(a.pos);
+    for (const p of this.plants) fit(p.pos);
+    for (const z of this.zones) fit(z);
   }
 
   setSensorRange(r) { this.sensorRange = r; this.resizeGrids(); }

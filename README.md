@@ -36,6 +36,19 @@ Colour follows the species by default (see below), or the diet if you switch it:
 
 Plants (yellow) grow mostly around a few fertile zones that drift slowly across the world.
 
+## The world, zoom and minimap
+
+The world is a fixed square, 1000 × 1000 pixels, whatever the size of the window. That is the same area as the 1280 × 800 world the balance was tuned on, so plants and prey are as dense as before. Larger squares were tried and hurt the hunters: over 3 worlds of 15 sim-minutes, meat-eaters had 349 births of their own at 1000 × 1000, but only 91 at 1200 × 1200 and 88 at 1400 × 1400, because prey is spread thinner.
+
+The view opens with the whole world fitted to the window. From there:
+
+- **Zoom** with the mouse wheel or trackpad, a two-finger pinch, the `+` and `−` buttons under the minimap, or the `+` and `-` keys. Zoom goes from a little below *whole world* up to 5× closer. The number between the buttons is the zoom relative to the whole world; click it (or press `0`) to see the whole world again.
+- **Pan** by dragging the world.
+- **Follow** a creature by double-clicking it, or by inspecting it and pressing *Follow* (or `F`). The view keeps it centred, zooming in if needed; if it dies, the view follows whichever creature the inspector moves on to. Dragging stops following.
+- **The minimap** (top right) shows the whole world: plants as faint specks, creatures as dots in their current colours (species or diet), the inspected creature circled and the part on screen outlined. Click or drag on it to move the view there.
+
+Fading trails are drawn only while the view holds still; after a pan or zoom the screen is repainted fully so trails never smear. Only what is on screen is drawn, so zooming in also makes drawing cheaper.
+
 The founders start in three loose diet clusters. A diet group that falls below 3 creatures, or a world below 30, is topped up with mutated copies of the best genomes so far, so a lineage can recover from an early wipe-out.
 
 ## Species and the family tree
@@ -135,18 +148,21 @@ Whether a creature flees threats or chases prey depends entirely on what its net
 | Progress | Opens the exam charts: are creatures getting better? |
 | Colour: Species, Diet | Colours creatures by species or by diet |
 | Click a creature | Shows its network firing live, its body, parts and species in the inspector, and its eye cones on the map |
+| Double-click a creature | Follows it |
+| Drag, wheel, pinch | Pan and zoom the view |
+| Minimap, −, +, zoom level, Follow | Move the view, zoom out or in, show the whole world, follow the inspected creature |
 
-Keyboard: `Space` pauses and resumes, `1` to `5` pick a speed, `T` opens or closes the family tree, `P` the progress window, `C` switches the colours.
+Keyboard: `Space` pauses and resumes, `1` to `5` pick a speed, `T` opens or closes the family tree, `P` the progress window, `C` switches the colours, `+` and `-` zoom, `0` shows the whole world, `F` follows the inspected creature.
 
 ## Seeds and saved worlds
 
 Saved worlds include the species and the family tree. Worlds saved before species existed still load: their creatures are grouped into species by body when they load, with a fresh family tree.
 
-Every rule in the simulation draws from one seeded random generator (`js/Random.js`). The same seed, window size and settings therefore replay the same world, tick for tick. The seed is shown in the panel and kept in the address, so `index.html?seed=4242` reopens world 4242. Particles are purely visual and use their own randomness, so drawing never changes a run.
+Every rule in the simulation draws from one seeded random generator (`js/Random.js`). The same seed and settings therefore replay the same world, tick for tick, whatever the window size. The seed is shown in the panel and kept in the address, so `index.html?seed=4242` reopens world 4242. Particles are purely visual and use their own randomness, so drawing never changes a run.
 
 **Progress in this browser.** The current world is also kept in this browser's localStorage, every 30 seconds and whenever you switch away from or close the tab. Opening the page again resumes it, including its settings, unless the address asks for a different seed (`?seed=`), which starts that world instead. A long run takes roughly 0.5 to 1 MB; if the browser refuses the space, the panel says so and you can still use Save world. Storage stays in this browser on this device only.
 
-A saved world also stores the generator's position, so loading it continues exactly as if it had never stopped. If the window is a different size than when it was saved, creatures outside the window are moved inside and the run no longer replays exactly; the panel says so.
+A saved world also stores the generator's position, so loading it continues exactly as if it had never stopped. Worlds saved before the world had a fixed size were as big as the window they ran in; they load stretched to fill the 1000 × 1000 world, with creatures, plants and fertile zones keeping their layout, and from then on no longer replay exactly. The panel says so.
 
 ## Headless balance runner
 
@@ -163,7 +179,7 @@ Options:
 | `--seeds N` | 10 | Number of seeds to run |
 | `--seed-start S` | 1 | First seed; seeds run S, S+1, … |
 | `--minutes M` | 10 | Sim-minutes per run (60 ticks per second) |
-| `--size WxH` | 1280x800 | World size |
+| `--size WxH` | 1000x1000 | World size |
 | `--set key=value` | | Override a setting, such as `plantRate=20`, `EVOLVE.dietGap=0.15` or `SPECIES.threshold=2`; repeatable |
 | `--json` | | Print full results as JSON |
 
@@ -187,9 +203,11 @@ js/SpatialGrid.js      grid for fast nearest-neighbour and collision lookups
 js/ParticleSystem.js   pooled particles for eating, birth and death bursts
 js/Simulation.js       world state, rules and the fixed-step game loop
 js/Progress.js         exams in a private test arena, run a slice per tick, and their record
-js/Renderer.js         canvas drawing: glowing sprites, trails, selection
+js/Camera.js           which part of the world the screen shows: zoom, pan, follow, fit
+js/Renderer.js         canvas drawing through the camera: glowing sprites, trails, selection
 js/TreeView.js         family tree panel
 js/ProgressView.js     progress window: exam charts and verdicts
+js/ViewControls.js     mouse, touch and keyboard zoom and pan, and the minimap
 js/UIController.js     panel, dashboard, species list, charts and brain inspector
 js/AutoSave.js         keeps the world in localStorage and resumes it on the next visit
 js/main.js             startup
@@ -201,7 +219,7 @@ The scripts are loaded as ordinary scripts in a fixed order rather than as ES mo
 ## Performance notes
 
 - Nearest-neighbour searches use a spatial grid whose cell size equals the longest possible sight, so each creature checks only the 3×3 cells around it.
-- Glow is baked into sprites once with `shadowBlur` (one sprite per diet step, and one per shape and 8° hue step for species colours, made the first time a species needs it), then drawn rotated and scaled each frame instead of blurring live.
+- Glow is baked into sprites once with `shadowBlur` (one sprite per diet step, and one per shape and 8° hue step for species colours, made the first time a species needs it), then drawn rotated and scaled each frame instead of blurring live. Sprites are baked at three times the screen's resolution so they stay sharp when zoomed in.
 - Network activations and particles use preallocated buffers, so the main loop creates very little garbage.
 
 ## Balance
@@ -211,7 +229,7 @@ The scripts are loaded as ordinary scripts in a fixed order rather than as ES mo
 - `SPECIES` in `js/config.js` holds the species threshold, the distance weights and how long extinct species stay in the tree. `Genome.distance()` in `js/Genome.js` computes the distance.
 - `Genome.express()` in `js/Genome.js` turns genes, parts and these values into a creature's traits; each part's mass and upkeep are set there.
 
-The defaults were chosen with the headless runner, in two rounds.
+The defaults were chosen with the headless runner, in two rounds. The numbers in this section, and in the species and exam results above, were measured when the world was 1280 × 800; add `--size 1280x800` to the commands to reproduce them exactly.
 
 **Before body parts.** At first, meat-eaters thrived in 0 of 10 seeds (10 sim-minutes each) and survived only on top-ups: 143 births of their own against 343 top-ups. Instrumenting the runs showed why. Hunters saw prey 77% of the time but starved after about 17 seconds with roughly one kill each, because they were no faster than their prey and had too little starting energy to learn to hunt before dying. Plant-eaters also escaped by evolving larger bodies. The fix combined a speed bonus and better-provisioned young for meat-leaning bodies, richer meat, a cheaper hunter metabolism, a looser size limit and a digestion curve that favours specialists. That got meat-eaters thriving in 4 of 8 seeds (20 sim-minutes each), with 1,078 births against 202 top-ups.
 

@@ -102,6 +102,7 @@ const INPUT_LABELS = [
 ];
 const OUTPUT_LABELS = ['turn L', 'turn R', 'accel', 'brake'];
 const BRAIN_SHAPE = [INPUT_LABELS.length, 12, OUTPUT_LABELS.length];
+const WORLD_SIZE = 1000; // the world is a fixed square, this many pixels wide and high (the same area the balance was tuned on)
 const PLANT_RADIUS = 2.6;
 const PLANT_CAP = 900;
 
